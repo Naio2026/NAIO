@@ -1,0 +1,70 @@
+# Node seat test key material (never commit)
+nodes_keys.json
+nodes_keys.csv
+nodes_list.txt
+
+# Secrets / environment (never commit)
+.env
+.env.*
+backend/.env
+backend/witness_signer/envs/signer*.env
+
+# Docs (do not upload/publish)
+docs/
+
+# Third-party / bundled apps
+Keeper-GUI/
+
+# DApp local config (contains private endpoints)
+dapp/config.json
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.cursor/
+
+# Python cache/build artifacts
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Virtual envs
+venv/
+.venv/
+env/
+ENV/
+
+# Runtime databases and state
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+backend/telegram_bot_state.json
+backend/keeper_validator_state.json
+backend/*.state.json
+
+# Runtime temp/log
+*.log
+*.tmp
+*.pid
+*.sock
+
+# Node / frontend
+node_modules/
+
+# Foundry / Solidity artifacts & third-party deps
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/
+

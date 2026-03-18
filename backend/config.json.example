@@ -1,0 +1,10 @@
+{
+  "rpc_url": "https://<your-endpoint>.bsc.quiknode.pro/<token>/",
+  "ws_url": "wss://<your-endpoint>.bsc.quiknode.pro/<token>/",
+  "usdt_address": "0x55d398326f99059fF775485246999027B3197955",
+  "controller_address": "",
+  "keeper_private_key": "",
+  "start_block": "latest",
+  "use_websocket": true
+}
+

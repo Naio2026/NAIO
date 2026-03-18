@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>NAIO Governance</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.9.0/dist/ethers.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.7);
+      --card-border: rgba(255, 255, 255, 0.1);
+      --accent: #334155;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --success: #10b981;
+      --error: #ef4444;
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+      padding-bottom: 60px;
+      max-width: 600px;
+      margin: 0 auto;
+      line-height: 1.5;
+    }
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 4px; letter-spacing: -0.025em; }
+    h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 12px; }
+    h3 { font-size: 1rem; font-weight: 600; color: var(--muted); margin: 24px 0 12px; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.8rem; }
+    .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 24px; }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(12px);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .card-hover:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    button {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 12px;
+      transition: background-color 0.2s;
+    }
+    button:hover { background: var(--primary-hover); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    button.secondary { background: var(--accent); color: var(--text); }
+    button.secondary:hover { background: #475569; }
+    button.success { background: var(--success); }
+    button.success:hover { background: #059669; }
+
+    input, select {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--accent);
+      background: rgba(15, 23, 42, 0.5);
+      color: var(--text);
+      font-size: 0.95rem;
+      margin-top: 6px;
+      transition: border-color 0.2s;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+
+    label { display: block; margin-top: 16px; margin-bottom: 4px; font-size: 0.85rem; font-weight: 500; color: var(--muted); }
+    .addr { font-family: "SF Mono", "Roboto Mono", monospace; font-size: 0.8rem; word-break: break-all; color: var(--muted); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+    .badge-35 { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
+    .badge-55 { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    .badge-status { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+
+    .flow-row { display: flex; align-items: center; justify-content: space-between; margin: 20px 0; position: relative; }
+    .flow-row::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--accent);
+      z-index: 0;
+      transform: translateY(-50%);
+    }
+    .flow-dot {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-weight: bold;
+      position: relative;
+      z-index: 1;
+      background: var(--card-bg);
+      border: 2px solid var(--accent);
+      color: var(--muted);
+      transition: all 0.3s;
+    }
+    .flow-dot.done { background: var(--success); border-color: var(--success); color: white; }
+    .flow-dot.pending { border-color: var(--accent); background: var(--bg); }
+    .flow-dot.current { background: var(--primary); border-color: var(--primary); color: white; box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2); }
+    .flow-arrow { display: none; }
+
+    .hidden { display: none !important; }
+    .error { color: var(--error); font-size: 0.9rem; margin-top: 8px; }
+    .success-msg { color: var(--success); font-size: 0.9rem; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+
+    .copy-btn { width: auto; padding: 8px 16px; margin-left: 8px; margin-top: 6px; }
+
+    .header-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+    .settings-btn {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 8px;
+      cursor: pointer;
+      font-size: 1.2rem;
+      color: var(--muted);
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0;
+      transition: all 0.2s;
+    }
+    .settings-btn:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+    .modal-content { background: #1e293b; border: 1px solid var(--card-border); border-radius: 16px; padding: 24px; max-width: 400px; width: 100%; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
+    .modal-close { float: right; cursor: pointer; font-size: 1.5rem; color: var(--muted); line-height: 1; }
+    .modal-close:hover { color: var(--text); }
+
+    .lang-btn {
+      padding: 8px 16px;
+      margin: 4px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: var(--text);
+      border: none;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+    .lang-btn:hover { background: #475569; }
+    .lang-btn.active { background: var(--primary); color: white; }
+
+    /* Proposal List Item */
+    .proposal-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+      flex-wrap: wrap;
+    }
+    .proposal-meta { font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; width: 100%; }
+    .proposal-title { 
+      font-size: 1rem; 
+      font-weight: 500; 
+      word-break: break-all;
+      white-space: normal;
+      line-height: 1.4;
+      flex: 1;
+      margin-right: 8px;
+    }
+    .proposal-status { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+
+    /* User Bar */
+    .user-bar { display: flex; align-items: center; gap: 12px; }
+    .user-avatar { width: 32px; height: 32px; background: linear-gradient(135deg, #6366f1, #a855f7); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; color: white; }
+    .user-info { flex: 1; }
+    .user-addr { font-weight: 600; font-size: 0.9rem; font-family: monospace; }
+    .disconnect-link { font-size: 0.75rem; color: var(--muted); text-decoration: none; display: block; margin-top: 2px; }
+    .disconnect-link:hover { color: var(--error); }
+
+    /* Radio List for Members */
+    .radio-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .radio-item {
+      display: flex;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.5);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .radio-item:hover { background: rgba(30, 41, 59, 0.8); border-color: var(--muted); }
+    .radio-item.selected {
+      background: rgba(99, 102, 241, 0.15);
+      border-color: var(--primary);
+    }
+    .radio-item input[type="radio"] {
+      width: 16px; height: 16px; margin: 0 10px 0 0;
+      accent-color: var(--primary);
+    }
+    .radio-label {
+      flex: 1;
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+    .radio-tag {
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: 8px;
+      background: var(--accent);
+      color: var(--muted);
+    }
+    .radio-item.selected .radio-tag {
+      background: var(--primary);
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="header-row">
+    <div>
+      <h1>🔐 NAIO Governance</h1>
+      <p class="subtitle" id="subtitle">5 members vote, 3 pass or 5 unanimous</p>
+    </div>
+    <button class="settings-btn" onclick="openSettings()" title="Settings">⚙️</button>
+  </div>
+
+  <div id="connectSection" class="card">
+    <button id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
+  </div>
+
+  <div id="mainSection" class="hidden">
+    <div class="card">
+      <div class="user-bar">
+        <div class="user-avatar" id="userAvatar">0x</div>
+        <div class="user-info">
+          <div class="user-addr" id="userAddr"></div>
+          <a href="javascript:void(0)" id="disconnectBtn" onclick="disconnectWallet()" class="disconnect-link">Disconnect</a>
+        </div>
+        <div id="memberStatus"></div>
+      </div>
+    </div>
+    <div id="mainContent">
+    <h3 id="existingProposalsTitle" style="font-size:1rem;margin:16px 0 8px;color:var(--muted)">Existing Proposals</h3>
+    <div id="proposalList"></div>
+    <h3 id="createTitle" style="font-size:1rem;margin:20px 0 8px;color:var(--muted)">New Proposal</h3>
+    <div class="card" id="createSection">
+      <select id="proposalType"></select>
+      <div id="proposalForm"></div>
+      <button onclick="createProposal()" id="btnCreate">Create</button>
+    </div>
+    </div>
+  </div>
+
+  <div id="proposalDetail" class="hidden">
+    <button class="secondary" onclick="showProposals()" id="btnBack">← Back</button>
+    <div id="proposalContent" class="card"></div>
+  </div>
+
+  <div id="settingsModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeSettings()">×</span>
+      <h2 id="settingsTitle">Settings</h2>
+      <div style="margin:12px 0"><span id="langLabel">Language</span></div>
+      <div id="langBtns"></div>
+    </div>
+  </div>
+
+  <script>
+    const COUNCIL_ABI = [
+      "function members(uint256) view returns (address)",
+      "function isMember(address) view returns (bool)",
+      "function controller() view returns (address)",
+      "function nextProposalId() view returns (uint256)",
+      "function getProposal(uint256) view returns (uint8 kind, bool executed, uint8 approvalCount, address proposer, uint64 createdAt, bytes callData, uint8 memberIndex, address newMember)",
+      "function hasApproved(uint256, address) view returns (bool)",
+      "function approveProposal(uint256)",
+      "function executeProposal(uint256)",
+      "function createKeeperProposal(bytes calldata callData) returns (uint256)",
+      "function createMemberReplaceProposal(uint8 memberIndex, address newMember) returns (uint256)",
+      "function createSetControllerProposal(address newController) returns (uint256)"
+    ];
+    const CONTROLLER_ABI = [
+      "function keeper() view returns (address)",
+      "function setKeeperByGovernor(address) external",
+      "function setKeeperStatusByGovernor(address,bool) external",
+      "function setKeeperAccountingPausedByGovernor(bool) external",
+      "function setValidatorGuardianByGovernor(address) external",
+      "function replaceWitnessSignerByGovernor(address,address) external"
+    ];
+    const THRESHOLD_35 = 3, THRESHOLD_55 = 5;
+    const SEL_REPLACE_WITNESS = "0x" + ethers.keccak256(ethers.toUtf8Bytes("replaceWitnessSignerByGovernor(address,address)")).slice(2, 10);
+
+    const RPC_DEFAULTS = { 56: "https://bsc-dataseed.binance.org/", 97: "https://data-seed-prebsc-1-s1.binance.org:8545/" };
+
+    const T = {
+      "zh-CN": {
+        title: "NAIO 治理委员会", subtitle: "5 人投票，3 人通过或 5 人全票",
+        connect: "连接钱包", back: "← 返回", proposals: "提案", existingProposals: "已有提案", create: "新建", createTitle: "新建提案", btnCreate: "创建",
+        settings: "设置", lang: "语言", save: "保存",
+        memberYes: "✓ 您是委员", memberNo: "✗ 您不是委员（只能看）",
+        noProposals: "还没有提案，点击「新建」发起第一个",
+        loading: "加载中…", loadFail: "加载失败",
+        proposalTypes: ["换记账员", "开/关记账员", "恢复入金", "换验证者", "换见证人(需5人)", "换委员(需5人)", "换治理对象(需5人)"],
+        voteContent: "投票内容", flowHint: "1→2→3→4→5 依次转发链接，每人点「赞成」后发给下一位",
+        approve: "我赞成", execute: "上链执行", executed: "已上链", pending: "待执行",
+        shareHint: "复制链接发给下一位委员", copied: "已复制",
+        need3: "需 3 人赞成", need5: "需 5 人全票",
+        keeperFromChain: "当前记账员（链上读取）", keeperAddr: "记账员地址", newKeeperAddr: "新记账员地址",
+        enable: "启用", disable: "禁用", pause: "暂停入金", resume: "恢复入金",
+        validatorAddr: "验证者地址", oldWitness: "旧见证人", newWitness: "新见证人", promptOldWitness: "请输入旧见证人地址（0x...）",
+        memberSlot: "委员席位(1-5)", newMember: "新委员地址", newController: "新治理对象地址",
+        disconnect: "断开连接",
+        init: "初始化...", connecting: "连接中...",
+        alertWallet: "请在手机钱包里或者装有MetaMask等钱包插件的浏览器里打开",
+        alertNoCouncil: "配置未加载。请使用 python dapp/server.py 启动（从 .env 自动读取）",
+        alertInvalidCouncil: "委员会地址无效。请确认填的是 KeeperCouncil 合约地址（.env 的 KEEPER_COUNCIL_ADDRESS），不是主合约 CONTROLLER_ADDRESS",
+        alertFail: "失败", saved: "已保存"
+      },
+      "zh-TW": {
+        title: "NAIO 治理委員會", subtitle: "5 人投票，3 人通過或 5 人全票",
+        connect: "連接錢包", back: "← 返回", proposals: "提案", existingProposals: "已有提案", create: "新建", createTitle: "新建提案", btnCreate: "創建",
+        settings: "設定", lang: "語言", save: "儲存",
+        memberYes: "✓ 您是委員", memberNo: "✗ 您不是委員（只能看）",
+        noProposals: "還沒有提案，點擊「新建」發起第一個",
+        loading: "載入中…", loadFail: "載入失敗",
+        proposalTypes: ["換記帳員", "開/關記帳員", "暫停/恢復入金", "換驗證者", "換見證人(需5人)", "換委員(需5人)", "換治理對象(需5人)"],
+        voteContent: "投票內容", flowHint: "1→2→3→4→5 依次轉發連結，每人點「贊成」後發給下一位",
+        approve: "我贊成", execute: "上鏈執行", executed: "已上鏈", pending: "待執行",
+        shareHint: "複製連結發給下一位委員", copied: "已複製",
+        need3: "需 3 人贊成", need5: "需 5 人全票",
+        keeperFromChain: "當前記帳員（鏈上讀取）", keeperAddr: "記帳員地址", newKeeperAddr: "新記帳員地址",
+        enable: "啟用", disable: "停用", pause: "暫停入金", resume: "恢復入金",
+        validatorAddr: "驗證者地址", oldWitness: "舊見證人", newWitness: "新見證人",
+        memberSlot: "委員席位(1-5)", newMember: "新委員地址", newController: "新治理對象地址",
+        disconnect: "斷開連接",
+        init: "初始化...", connecting: "連線中...",
+        alertWallet: "請安裝錢包並在 DApp 瀏覽器打開", alertNoCouncil: "配置未載入。請使用 python dapp/server.py 啟動",
+        alertInvalidCouncil: "委員會地址無效。請確認填的是 KeeperCouncil 合約地址（KEEPER_COUNCIL_ADDRESS），不是主合約 CONTROLLER_ADDRESS",
+        alertFail: "失敗", saved: "已儲存"
+      },
+      "en-US": {
+        title: "NAIO Governance", subtitle: "5 members vote, 3 pass or 5 unanimous",
+        connect: "Connect Wallet", back: "← Back", proposals: "Proposals", existingProposals: "Existing Proposals", create: "New", createTitle: "New Proposal", btnCreate: "Create",
+        settings: "Settings", lang: "Language", save: "Save",
+        memberYes: "✓ You are a member", memberNo: "✗ Not a member (view only)",
+        noProposals: "No proposals yet. Tap «New» to create one",
+        loading: "Loading…", loadFail: "Load failed",
+        proposalTypes: ["Set keeper", "Enable/disable keeper", "Pause/resume deposits", "Set validator", "Replace witness (5/5)", "Replace member (5/5)", "Set governance target (5/5)"],
+        voteContent: "Vote content", flowHint: "1→2→3→4→5 Forward link to next. Each taps «Approve» then forwards",
+        approve: "I Approve", execute: "Execute on-chain", executed: "Executed", pending: "Pending",
+        shareHint: "Copy link and send to next member", copied: "Copied",
+        need3: "3 votes needed", need5: "5 votes needed",
+        keeperFromChain: "Current keeper (from chain)", keeperAddr: "Keeper address", newKeeperAddr: "New keeper address",
+        enable: "Enable", disable: "Disable", pause: "Pause deposits", resume: "Resume deposits",
+        validatorAddr: "Validator address", oldWitness: "Old witness", newWitness: "New witness",
+        memberSlot: "Member slot (1-5)", newMember: "New member address", newController: "New governance target address",
+        disconnect: "Disconnect",
+        init: "Initializing...", connecting: "Connecting...",
+        alertWallet: "Install wallet and open in DApp browser", alertNoCouncil: "Config not loaded. Run: python dapp/server.py",
+        alertInvalidCouncil: "Invalid council address. Use KeeperCouncil (KEEPER_COUNCIL_ADDRESS), not CONTROLLER_ADDRESS",
+        alertFail: "Failed", saved: "Saved"
+      },
+      "ko": {
+        title: "NAIO 거버넌스", subtitle: "5명 투표, 3명 통과 또는 5명 만장일치",
+        connect: "지갑 연결", back: "← 뒤로", proposals: "제안", existingProposals: "기존 제안", create: "새로 만들기", createTitle: "새 제안", btnCreate: "생성",
+        settings: "설정", lang: "언어", save: "저장",
+        memberYes: "✓ 위원입니다", memberNo: "✗ 위원 아님 (보기만)",
+        noProposals: "아직 제안 없음. «새로 만들기» 클릭",
+        loading: "로딩…", loadFail: "로드 실패",
+        proposalTypes: ["Keeper 설정", "Keeper 활성/비활성", "입금 일시정지/재개", "검증자 설정", "증인 교체(5/5)", "위원 교체(5/5)", "거버넌스 대상 설정(5/5)"],
+        voteContent: "투표 내용", flowHint: "1→2→3→4→5 링크 전달. 각자 «승인» 후 다음에게 전달",
+        approve: "승인", execute: "온체인 실행", executed: "실행됨", pending: "대기",
+        shareHint: "링크 복사 후 다음 위원에게 전달", copied: "복사됨",
+        need3: "3표 필요", need5: "5표 필요",
+        keeperFromChain: "현재 Keeper (체인에서)", keeperAddr: "Keeper 주소", newKeeperAddr: "새 Keeper 주소",
+        enable: "활성화", disable: "비활성화", pause: "입금 일시정지", resume: "입금 재개",
+        validatorAddr: "검증자 주소", oldWitness: "기존 증인", newWitness: "신규 증인",
+        memberSlot: "위원 슬롯(1-5)", newMember: "신규 위원 주소", newController: "신규 거버넌스 대상 주소",
+        disconnect: "연결 해제",
+        init: "초기화 중...", connecting: "연결 중...",
+        alertWallet: "지갑 설치 후 DApp 브라우저에서 열기", alertNoCouncil: "설정 미로드. python dapp/server.py 실행",
+        alertInvalidCouncil: "위원회 주소가 잘못되었습니다. KeeperCouncil 주소(KEEPER_COUNCIL_ADDRESS)를 사용하세요. CONTROLLER_ADDRESS가 아닙니다",
+        alertFail: "실패", saved: "저장됨"
+      },
+      "ja": {
+        title: "NAIO ガバナンス", subtitle: "5人投票、3人可決または5人全会一致",
+        connect: "ウォレット接続", back: "← 戻る", proposals: "提案", existingProposals: "既存の提案", create: "新規", createTitle: "新規提案", btnCreate: "作成",
+        settings: "設定", lang: "言語", save: "保存",
+        memberYes: "✓ 委員です", memberNo: "✗ 委員ではありません（閲覧のみ）",
+        noProposals: "提案がまだありません。「新規」をタップ",
+        loading: "読み込み中…", loadFail: "読み込み失敗",
+        proposalTypes: ["Keeper設定", "Keeper有効/無効", "入金一時停止/再開", "検証者設定", "証人交代(5/5)", "委員交代(5/5)", "ガバナンス対象設定(5/5)"],
+        voteContent: "投票内容", flowHint: "1→2→3→4→5 リンクを次へ。各自「賛成」後転送",
+        approve: "賛成", execute: "オンチェーン実行", executed: "実行済み", pending: "待機中",
+        shareHint: "リンクをコピーして次の委員へ", copied: "コピーしました",
+        need3: "3票必要", need5: "5票必要",
+        keeperFromChain: "現在のKeeper（チェーンから）", keeperAddr: "Keeperアドレス", newKeeperAddr: "新しいKeeperアドレス",
+        enable: "有効", disable: "無効", pause: "入金一時停止", resume: "入金再開",
+        validatorAddr: "検証者アドレス", oldWitness: "旧証人", newWitness: "新証人",
+        memberSlot: "委員スロット(1-5)", newMember: "新委員アドレス", newController: "新ガバナンス対象アドレス",
+        disconnect: "接続解除",
+        init: "初期化中...", connecting: "接続中...",
+        alertWallet: "ウォレットをインストールしDAppブラウザで開く", alertNoCouncil: "設定未読込。python dapp/server.py で起動",
+        alertInvalidCouncil: "委員会アドレスが無効です。KeeperCouncil アドレス(KEEPER_COUNCIL_ADDRESS)を使用してください。CONTROLLER_ADDRESSではありません",
+        alertFail: "失敗", saved: "保存しました"
+      },
+      "th": {
+        title: "NAIO ธรรมาภิบาล", subtitle: "5 คนโหวต 3 ผ่านหรือ 5 เอกฉันท์",
+        connect: "เชื่อมต่อกระเป๋า", back: "← กลับ", proposals: "ข้อเสนอ", existingProposals: "ข้อเสนอที่มีอยู่", create: "ใหม่", createTitle: "ข้อเสนอใหม่", btnCreate: "สร้าง",
+        settings: "การตั้งค่า", lang: "ภาษา", save: "บันทึก",
+        memberYes: "✓ คุณเป็นสมาชิก", memberNo: "✗ ไม่ใช่สมาชิก (ดูอย่างเดียว)",
+        noProposals: "ยังไม่มีข้อเสนอ กด «ใหม่»",
+        loading: "กำลังโหลด…", loadFail: "โหลดล้มเหลว",
+        proposalTypes: ["ตั้ง Keeper", "เปิด/ปิด Keeper", "หยุด/เปิดรับฝาก", "ตั้งผู้ตรวจสอบ", "เปลี่ยนพยาน(5/5)", "เปลี่ยนสมาชิก(5/5)", "ตั้งเป้าหมายกำกับดูแล(5/5)"],
+        voteContent: "เนื้อหาโหวต", flowHint: "1→2→3→4→5 ส่งลิงก์ต่อ แต่ละคนกด «อนุมัติ» แล้วส่งต่อ",
+        approve: "อนุมัติ", execute: "ดำเนินการบนเชน", executed: "ดำเนินการแล้ว", pending: "รอดำเนินการ",
+        shareHint: "คัดลอกลิงก์ส่งต่อ", copied: "คัดลอกแล้ว",
+        need3: "ต้อง 3 คะแนน", need5: "ต้อง 5 คะแนน",
+        keeperFromChain: "Keeper ปัจจุบัน (จากเชน)", keeperAddr: "ที่อยู่ Keeper", newKeeperAddr: "ที่อยู่ Keeper ใหม่",
+        enable: "เปิด", disable: "ปิด", pause: "หยุดรับฝาก", resume: "เปิดรับฝาก",
+        validatorAddr: "ที่อยู่ผู้ตรวจสอบ", oldWitness: "พยานเก่า", newWitness: "พยานใหม่",
+        memberSlot: "ตำแหน่งสมาชิก(1-5)", newMember: "ที่อยู่สมาชิกใหม่", newController: "ที่อยู่เป้าหมายกำกับดูแลใหม่",
+        disconnect: "ยกเลิกการเชื่อมต่อ",
+        init: "กำลังเริ่มต้น...", connecting: "กำลังเชื่อมต่อ...",
+        alertWallet: "ติดตั้งกระเป๋าและเปิดใน DApp browser", alertNoCouncil: "ยังไม่ได้โหลด config รัน python dapp/server.py",
+        alertInvalidCouncil: "ที่อยู่คณะกรรมการไม่ถูกต้อง ใช้ KeeperCouncil (KEEPER_COUNCIL_ADDRESS) ไม่ใช่ CONTROLLER_ADDRESS",
+        alertFail: "ล้มเหลว", saved: "บันทึกแล้ว"
+      }
+    };
+    const LANG_OPTS = ["en-US", "zh-CN", "zh-TW", "ko", "ja", "th"];
+
+    let provider, signer, council, controllerContract, userAddr;
+    let councilAddress, controllerAddress, rpcUrl, chainId;
+    let isCouncilMember = false;
+    let lang = localStorage.getItem("gov_lang") || "en-US";
+
+    function t(k) { return (T[lang] || T["en-US"])[k] || k; }
+
+    function applyLang() {
+      document.title = t("title");
+      const h1 = document.querySelector("h1");
+      if (h1) h1.textContent = "🔐 " + t("title");
+      document.getElementById("subtitle").textContent = t("subtitle");
+      document.getElementById("connectBtn").textContent = t("connect");
+      const dc = document.getElementById("disconnectBtn");
+      if (dc) dc.textContent = t("disconnect");
+      const ext = document.getElementById("existingProposalsTitle");
+      if (ext) ext.textContent = t("existingProposals");
+      document.getElementById("createTitle").textContent = t("createTitle");
+      document.getElementById("btnCreate").textContent = t("btnCreate");
+      document.getElementById("btnBack").textContent = t("back");
+      document.getElementById("settingsTitle").textContent = t("settings");
+      document.getElementById("langLabel").textContent = t("lang");
+      const opts = [
+        [1, t("proposalTypes")[0], "35"], [2, t("proposalTypes")[1], "35"], [3, t("proposalTypes")[2], "35"],
+        [4, t("proposalTypes")[3], "35"], [5, t("proposalTypes")[4], "55"], [6, t("proposalTypes")[5], "55"], [7, t("proposalTypes")[6], "55"]
+      ];
+      const sel = document.getElementById("proposalType");
+      sel.innerHTML = opts.map(([v, lbl]) => `<option value="${v}">${lbl}</option>`).join("");
+    }
+
+    async function loadConfig() {
+      const params = new URLSearchParams(location.search);
+      try {
+        const r = await fetch("config.json");
+        if (r.ok) {
+          const cfg = await r.json();
+          councilAddress = (cfg.councilAddress || "").trim();
+          controllerAddress = (cfg.controllerAddress || "").trim();
+          chainId = parseInt(cfg.chainId || "97", 10);
+          rpcUrl = (cfg.rpcUrl || RPC_DEFAULTS[chainId] || "").trim();
+        } else throw new Error();
+      } catch {
+        councilAddress = params.get("council") || "";
+        controllerAddress = params.get("controller") || "";
+        chainId = parseInt(params.get("chainId") || "97", 10);
+        rpcUrl = RPC_DEFAULTS[chainId] || "";
+      }
+      const langBtns = document.getElementById("langBtns");
+      if (langBtns) langBtns.innerHTML = LANG_OPTS.map(l => `<button class="lang-btn ${l === lang ? 'active' : ''}" onclick="setLang('${l}')">${l}</button>`).join("");
+    }
+
+    function setLang(l) {
+      lang = l;
+      localStorage.setItem("gov_lang", l);
+      applyLang();
+      document.getElementById("langBtns").innerHTML = LANG_OPTS.map(l => `<button class="lang-btn ${l === lang ? 'active' : ''}" onclick="setLang('${l}')">${l}</button>`).join("");
+    }
+
+    function openSettings() {
+      document.getElementById("settingsModal").classList.remove("hidden");
+    }
+
+    function closeSettings() { document.getElementById("settingsModal").classList.add("hidden"); }
+
+    function disconnectWallet() {
+      provider = null;
+      signer = null;
+      council = null;
+      controllerContract = null;
+      userAddr = null;
+      document.getElementById("userAvatar").textContent = "0x";
+      document.getElementById("memberStatus").innerHTML = "";
+      document.getElementById("mainSection").classList.add("hidden");
+      document.getElementById("connectSection").classList.remove("hidden");
+      if (window.ethereum) {
+        window.ethereum.removeListener?.("chainChanged", onChainChanged);
+      }
+    }
+
+    async function ensureNetwork() {
+      if (!window.ethereum || !chainId) return;
+      const chainIdHex = "0x" + chainId.toString(16);
+      const current = await window.ethereum.request({ method: "eth_chainId" });
+      if (current === chainIdHex) return;
+      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chainIdHex }] }).catch(() => {
+        if (chainId === 56) return window.ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: "0x38", chainName: "BSC Mainnet", nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 }, rpcUrls: [RPC_DEFAULTS[56] || rpcUrl] }]});
+        if (chainId === 97) return window.ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: "0x61", chainName: "BSC Testnet", nativeCurrency: { name: "BNB", symbol: "tBNB", decimals: 18 }, rpcUrls: [RPC_DEFAULTS[97] || rpcUrl] }]});
+      });
+    }
+
+    async function onChainChanged() {
+      if (!userAddr || !councilAddress || !chainId) return;
+      try {
+        await ensureNetwork();
+        provider = new ethers.BrowserProvider(window.ethereum);
+        signer = await provider.getSigner();
+        council = new ethers.Contract(councilAddress, COUNCIL_ABI, signer);
+        if (controllerAddress) controllerContract = new ethers.Contract(controllerAddress, CONTROLLER_ABI, provider);
+      } catch (e) { /* ignore when user rejects or refresh fails */ }
+    }
+
+    async function connectWallet() {
+      const btn = document.getElementById("connectBtn");
+      btn.disabled = true;
+      btn.textContent = t("connecting");
+
+      if (!window.ethereum) {
+        alert(t("alertWallet"));
+        btn.disabled = false;
+        btn.textContent = t("connect");
+        return;
+      }
+      try {
+        await ensureNetwork();
+        const rpc = rpcUrl || RPC_DEFAULTS[chainId];
+        provider = new ethers.BrowserProvider(window.ethereum);
+        signer = await provider.getSigner();
+        userAddr = (await signer.getAddress()).toLowerCase();
+        document.getElementById("userAddr").textContent = userAddr.slice(0, 6) + "..." + userAddr.slice(-4);
+        document.getElementById("userAvatar").textContent = userAddr.slice(2, 4);
+        if (!councilAddress) {
+          alert(t("alertNoCouncil"));
+          openSettings();
+          return;
+        }
+        council = new ethers.Contract(councilAddress, COUNCIL_ABI, signer);
+        try {
+          isCouncilMember = await council.isMember(userAddr);
+        } catch (e) {
+          const msg = (e.message || "").toLowerCase();
+          if (msg.includes("bad_data") || msg.includes("0x") || msg.includes("decode")) {
+            alert(t("alertInvalidCouncil"));
+            openSettings();
+            return;
+          }
+          throw e;
+        }
+        const icon = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="margin-right:4px"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg>';
+        document.getElementById("memberStatus").innerHTML = isCouncilMember
+          ? '<span class="success-msg" title="' + t("memberYes") + '">' + icon + ' ' + t("memberYes").replace("✓ ", "") + '</span>'
+          : '<span class="error" style="font-size:0.8rem">' + t("memberNo").replace("✗ ", "") + '</span>';
+        document.getElementById("connectSection").classList.add("hidden");
+        document.getElementById("mainSection").classList.remove("hidden");
+        if (controllerAddress) {
+          controllerContract = new ethers.Contract(controllerAddress, CONTROLLER_ABI, provider);
+        }
+        renderProposalForm();
+        loadProposals();
+        if (!isCouncilMember) {
+          document.getElementById("createTitle").classList.add("hidden");
+          document.getElementById("createSection").classList.add("hidden");
+        }
+        window.ethereum.on?.("chainChanged", onChainChanged);
+      } catch (e) {
+        alert(t("alertFail") + ": " + (e.message || e));
+        btn.disabled = false;
+        btn.textContent = t("connect");
+      }
+    }
+
+    async function renderProposalForm() {
+      const type = document.getElementById("proposalType").value;
+      let html = "";
+      if (type === "1" || type === "2") {
+        let keeperVal = "";
+        if (controllerContract) {
+          try { keeperVal = await controllerContract.keeper(); } catch {}
+        }
+        if (type === "1") {
+          html = `<label>${t("newKeeperAddr")}</label><input type="text" id="pk1" placeholder="0x..." value="">`;
+        } else {
+          html = `<label>${t("keeperFromChain")}</label><input type="text" id="pk1" placeholder="0x..." value="${keeperVal}">`;
+          html += `<label>${t("enable")}/${t("disable")}</label><select id="pk2"><option value="true">${t("enable")}</option><option value="false">${t("disable")}</option></select>`;
+        }
+      } else if (type === "3") {
+        html = `<label>${t("pause")}/${t("resume")}</label><select id="pk2"><option value="true">${t("pause")}</option><option value="false">${t("resume")}</option></select>`;
+      } else if (type === "4") {
+        html = `<label>${t("validatorAddr")}</label><input type="text" id="pk1" placeholder="0x...">`;
+      } else if (type === "5") {
+        html = `<label>${t("newWitness")}</label><input type="text" id="pk2" placeholder="0x...">`;
+      } else if (type === "6") {
+        html = `<label>${t("memberSlot")}</label><div class="radio-list" id="memberList">Loading...</div><label>${t("newMember")}</label><input type="text" id="pk1" placeholder="0x...">`;
+        setTimeout(async () => {
+          if (!council) return;
+          let listHtml = "";
+          for (let i = 0; i < 5; i++) {
+            let m = "";
+            try { m = await council.members(i); } catch {}
+            const isMe = userAddr && m.toLowerCase() === userAddr.toLowerCase();
+            listHtml += `
+              <div class="radio-item" onclick="selectMemberRadio(${i})">
+                <input type="radio" name="memberIdx" value="${i + 1}" ${i === 0 ? "checked" : ""}>
+                <span class="radio-label">[${i + 1}] ${m ? m.slice(0, 10) + "..." + m.slice(-8) : "-"}</span>
+                ${isMe ? `<span class="radio-tag">YOU</span>` : ""}
+              </div>`;
+          }
+          const container = document.getElementById("memberList");
+          if (container) {
+            container.innerHTML = listHtml;
+            selectMemberRadio(0);
+          }
+        }, 10);
+      } else if (type === "7") {
+        html = `<label>${t("newController")}</label><input type="text" id="pk1" placeholder="0x...">`;
+      }
+      document.getElementById("proposalForm").innerHTML = html;
+    }
+
+    document.getElementById("proposalType").addEventListener("change", renderProposalForm);
+
+    function selectMemberRadio(idx) {
+      document.querySelectorAll(".radio-item").forEach(el => el.classList.remove("selected"));
+      const inputs = document.getElementsByName("memberIdx");
+      if (inputs[idx]) {
+        inputs[idx].checked = true;
+        inputs[idx].parentElement.classList.add("selected");
+      }
+    }
+
+    async function createProposal() {
+      const type = document.getElementById("proposalType").value;
+      try {
+        const iface = new ethers.Interface(CONTROLLER_ABI);
+        let callData;
+        if (type === "1") callData = iface.encodeFunctionData("setKeeperByGovernor", [document.getElementById("pk1").value.trim()]);
+        else if (type === "2") callData = iface.encodeFunctionData("setKeeperStatusByGovernor", [document.getElementById("pk1").value.trim(), document.getElementById("pk2").value === "true"]);
+        else if (type === "3") callData = iface.encodeFunctionData("setKeeperAccountingPausedByGovernor", [document.getElementById("pk2").value === "true"]);
+        else if (type === "4") callData = iface.encodeFunctionData("setValidatorGuardianByGovernor", [document.getElementById("pk1").value.trim()]);
+        else if (type === "5") {
+          const oldWitness = window.prompt(t("promptOldWitness") || "Enter old witness address (0x...)");
+          if (!oldWitness) return;
+          callData = iface.encodeFunctionData("replaceWitnessSignerByGovernor", [oldWitness.trim(), document.getElementById("pk2").value.trim()]);
+        }
+        else if (type === "6") {
+          const nextIdBefore = await council.nextProposalId();
+          const radios = document.getElementsByName("memberIdx");
+          let val = "1";
+          for (const r of radios) { if (r.checked) val = r.value; }
+          const tx = await council.createMemberReplaceProposal(parseInt(val, 10) - 1, document.getElementById("pk1").value.trim());
+          await tx.wait();
+          await loadProposals();
+          showProposalDetail(Number(nextIdBefore));
+          return;
+        } else if (type === "7") {
+          const nextIdBefore = await council.nextProposalId();
+          const tx = await council.createSetControllerProposal(document.getElementById("pk1").value.trim());
+          await tx.wait();
+          await loadProposals();
+          showProposalDetail(Number(nextIdBefore));
+          return;
+        } else {
+          throw new Error("UNSUPPORTED_PROPOSAL_TYPE");
+        }
+        const nextIdBefore = await council.nextProposalId();
+        const tx = await council.createKeeperProposal(callData);
+        await tx.wait();
+        await loadProposals();
+        showProposalDetail(Number(nextIdBefore));
+      } catch (e) {
+        alert(t("alertFail") + ": " + (e.message || e));
+      }
+    }
+
+    function getRequiredThreshold(kind, callData) {
+      if (kind === 1 || kind === 2) return THRESHOLD_55;
+      if (kind === 0 && callData && callData.slice(0, 10) === SEL_REPLACE_WITNESS) return THRESHOLD_55;
+      return THRESHOLD_35;
+    }
+
+    function decodeCallData(callData) {
+      if (!callData || callData === "0x") return "";
+      const iface = new ethers.Interface(CONTROLLER_ABI);
+      try {
+        const parsed = iface.parseTransaction({ data: callData });
+        if (!parsed) return callData.slice(0, 30) + "...";
+        const args = parsed.args.map(a => String(a));
+        if (parsed.name === "setKeeperByGovernor") return `${t("proposalTypes")[0]} → ${args[0]}`;
+        if (parsed.name === "setKeeperStatusByGovernor") return `${t("proposalTypes")[1]} → ${args[0]} (${args[1] === "true" ? t("enable") : t("disable")})`;
+        if (parsed.name === "setKeeperAccountingPausedByGovernor") return `${t("proposalTypes")[2]} → ${args[0] === "true" ? t("pause") : t("resume")}`;
+        if (parsed.name === "setValidatorGuardianByGovernor") return `${t("proposalTypes")[3]} → ${args[0]}`;
+        if (parsed.name === "replaceWitnessSignerByGovernor") return `${t("proposalTypes")[4]} (${t("oldWitness")}: ${args[0]} → ${t("newWitness")}: ${args[1]})`;
+        return parsed.name + "(" + args.join(", ") + ")";
+      } catch { return callData.slice(0, 30) + "..."; }
+    }
+
+    async function loadProposals() {
+      const list = document.getElementById("proposalList");
+      list.innerHTML = "<p>" + t("loading") + "</p>";
+      try {
+        const nextId = await council.nextProposalId();
+        const n = Number(nextId);
+        if (n === 0) {
+          list.innerHTML = "<p>" + t("noProposals") + "</p>";
+          return;
+        }
+        let html = "";
+        for (let i = 0; i < n; i++) {
+          const [kind, executed, approvalCount, proposer, createdAt, callData, memberIndex, newMember] = await council.getProposal(i);
+          const req = getRequiredThreshold(Number(kind), callData);
+          const badge = req === 5 ? "badge-55" : "badge-35";
+          let desc = decodeCallData(callData);
+          if (!desc && Number(kind) === 1) desc = t("proposalTypes")[5] + " #" + (Number(memberIndex) + 1);
+          else if (!desc && Number(kind) === 2) desc = t("proposalTypes")[6];
+          html += `<div class="card card-hover" onclick="showProposalDetail(${i})" style="cursor:pointer">
+            <div class="proposal-meta">
+              <span>#${i}</span>
+              <span class="badge ${badge}">${approvalCount}/${req}</span>
+            </div>
+            <div class="proposal-item">
+              <span class="proposal-title">${desc || "-"}</span>
+              ${executed ? '<span class="badge badge-status" style="margin-left:auto">' + t("executed") + '</span>' : ""}
+            </div>
+          </div>`;
+        }
+        list.innerHTML = html;
+      } catch (e) {
+        list.innerHTML = "<p class='error'>" + t("loadFail") + ": " + (e.message || e) + "</p>";
+      }
+    }
+
+    async function showProposalDetail(proposalId) {
+      document.getElementById("mainContent").classList.add("hidden");
+      document.getElementById("proposalDetail").classList.remove("hidden");
+      const [kind, executed, approvalCount, proposer, createdAt, callData, memberIndex, newMember] = await council.getProposal(proposalId);
+      const req = getRequiredThreshold(Number(kind), callData);
+      const members = [];
+      for (let i = 0; i < 5; i++) members.push((await council.members(i)).toLowerCase());
+      const approved = [];
+      for (let i = 0; i < 5; i++) approved.push(await council.hasApproved(proposalId, members[i]));
+
+      let content = decodeCallData(callData);
+      if (!content && Number(kind) === 1) content = t("proposalTypes")[5] + " #" + (Number(memberIndex) + 1) + " → " + newMember;
+      else if (!content && Number(kind) === 2) content = t("proposalTypes")[6] + " → " + newMember;
+
+      const myIdx = members.indexOf(userAddr);
+      const canApprove = !executed && myIdx >= 0 && !approved[myIdx];
+      const canExecute = !executed && approvalCount >= req && myIdx >= 0;
+
+      let flowHtml = "<div class='flow-row'>";
+      for (let i = 0; i < 5; i++) {
+        const isCurrent = members[i] === userAddr && canApprove;
+        flowHtml += `<div class="flow-dot ${approved[i] ? 'done' : isCurrent ? 'current' : 'pending'}" title="${members[i]}">${i + 1}</div>`;
+        if (i < 4) flowHtml += '<span class="flow-arrow">→</span>';
+      }
+      flowHtml += "</div><div style='font-size:0.8rem;color:var(--muted);margin-top:6px'>" + t("flowHint") + "</div>";
+
+      document.getElementById("proposalContent").innerHTML = `
+        <h2>#${proposalId}</h2>
+        <div><span class="badge ${req === 5 ? "badge-55" : "badge-35"}">${req === 5 ? t("need5") : t("need3")}</span></div>
+        <div style="margin:12px 0"><strong>${t("voteContent")}:</strong></div>
+        <div class="addr" style="background:var(--bg);padding:12px;border-radius:8px;margin:8px 0">${content || "-"}</div>
+        ${flowHtml}
+        <div style="margin:12px 0">${approvalCount}/${req} ${executed ? t("executed") : t("pending")}</div>
+        <div style="margin-top:16px">
+          ${canApprove ? `<button onclick="doApprove(${proposalId})">${t("approve")}</button>` : ""}
+          ${canExecute ? `<button class="success" onclick="doExecute(${proposalId})">${t("execute")}</button>` : ""}
+        </div>
+        <div style="margin-top:16px">
+          <label>${t("shareHint")}</label>
+          <div style="display:flex;align-items:center;margin-top:8px">
+            <input type="text" id="shareUrl" readonly value="${location.origin + location.pathname}?id=${proposalId}&council=${encodeURIComponent(councilAddress)}&chainId=${chainId}" style="flex:1">
+            <button class="copy-btn" onclick="copyShareUrl()">${t("copied")}</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function showProposals() {
+      document.getElementById("proposalDetail").classList.add("hidden");
+      document.getElementById("mainContent").classList.remove("hidden");
+      loadProposals();
+    }
+
+    async function doApprove(id) {
+      try {
+        const tx = await council.approveProposal(id);
+        await tx.wait();
+        await showProposalDetail(id);
+      } catch (e) { alert(t("alertFail") + ": " + (e.message || e)); }
+    }
+
+    async function doExecute(id) {
+      try {
+        const tx = await council.executeProposal(id);
+        await tx.wait();
+        await showProposalDetail(id);
+      } catch (e) { alert(t("alertFail") + ": " + (e.message || e)); }
+    }
+
+    function copyShareUrl() {
+      document.getElementById("shareUrl").select();
+      document.execCommand("copy");
+      alert(t("copied"));
+    }
+
+    async function init() {
+      applyLang();
+      const btn = document.getElementById("connectBtn");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = t("init") || "Loading...";
+      }
+      await loadConfig();
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = t("connect");
+      }
+      const params = new URLSearchParams(location.search);
+      const id = params.get("id");
+      councilAddress = councilAddress || params.get("council") || "";
+      controllerAddress = controllerAddress || params.get("controller") || "";
+      chainId = parseInt(params.get("chainId") || String(chainId), 10);
+      if (id !== null && councilAddress) {
+        setTimeout(() => connectWallet().then(() => {
+          if (council && userAddr) showProposalDetail(parseInt(id, 10));
+        }), 300);
+      }
+    }
+    init();
+  </script>
+</body>
+</html>

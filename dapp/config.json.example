@@ -1,0 +1,6 @@
+{
+  "councilAddress": "Copy from .env: KEEPER_COUNCIL_ADDRESS",
+  "controllerAddress": "Copy from .env: CONTROLLER_ADDRESS",
+  "chainId": 97,
+  "rpcUrl": ""
+}

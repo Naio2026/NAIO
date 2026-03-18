@@ -1,0 +1,25 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+cache_path = "cache"
+optimizer = true
+optimizer_runs = 1
+# 使用固定版本 solc（由 Foundry 管理）
+solc_version = "0.8.24"
+remappings = ["forge-std/=lib/forge-std/src/"]
+# 复杂函数启用 IR 管线，规避 stack-too-deep
+via_ir = true
+bytecode_hash = "none"
+cbor_metadata = false
+fs_permissions = [
+  { access = "read", path = "./nodes_list.txt" }
+]
+
+# 说明：
+# - 依赖（如 OpenZeppelin）通过 `forge install` 拉到 `lib/`。
+# - BSC 上建议保持 0.8.x 且开启优化，便于审计与 gas 控制。
+
+
