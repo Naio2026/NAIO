@@ -90,7 +90,7 @@ _extract_forge_semver() {
     forge --version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1
 }
 
-# Pick Python 3.9–3.12; on Ubuntu 20.04 (python3 = 3.8) install deadsnakes 3.10
+# Pick Python 3.9–3.12; on Ubuntu 20.04 (python3 = 3.8) install via deadsnakes (see try_install_deadsnakes_python)
 ensure_python_for_venv() {
     local cand ver major minor
     for cand in python3.12 python3.11 python3.10 python3.9; do
@@ -119,18 +119,43 @@ ensure_python_for_venv() {
     return 1
 }
 
-install_deadsnakes_python310() {
-    echo "   No Python in 3.${PY_MIN_MINOR}–3.${PY_MAX_MINOR} range; installing python3.10 via deadsnakes PPA..."
-    apt-get install -y -qq software-properties-common >/dev/null
-    add-apt-repository -y ppa:deadsnakes/ppa
+# Add deadsnakes PPA and try python3.10, then 3.9, 3.11, 3.12 (some mirrors lack python3.10-venv; 3.9 often works).
+try_install_deadsnakes_python() {
+    echo ""
+    echo "   [INFO] Ubuntu 20.04 ships Python 3.8; we need 3.9+. Adding deadsnakes PPA and trying 3.10, 3.9, 3.11, 3.12 (in that order)."
+    echo "   [INFO] If apt fails, check network access to Launchpad (PPA) or use a proxy, then re-run this script."
+    apt-get install -y -qq software-properties-common ca-certificates
+    if ! grep -rq "deadsnakes/ppa" /etc/apt/sources.list.d/ 2>/dev/null; then
+        add-apt-repository -y ppa:deadsnakes/ppa
+    else
+        echo "   (deadsnakes PPA already present)"
+    fi
     apt-get update -qq
-    apt-get install -y -qq python3.10 python3.10-venv python3.10-dev >/dev/null
-    echo "✅ Installed python3.10 (deadsnakes)"
+
+    local pyver
+    set +e
+    for pyver in 10 9 11 12; do
+        echo "   Trying: apt install python3.${pyver} python3.${pyver}-venv python3.${pyver}-dev ..."
+        if apt-get install -y python3.${pyver} python3.${pyver}-venv python3.${pyver}-dev; then
+            echo "✅ Installed python3.${pyver} (deadsnakes)"
+            set -e
+            return 0
+        fi
+        echo "   (python3.${pyver} not available from apt, trying next version...)"
+    done
+    set -e
+    echo ""
+    echo "❌ Could not install Python 3.9–3.12 from deadsnakes. Try:"
+    echo "   1) Fix network/DNS or use a proxy so apt can reach the PPA (Launchpad)."
+    echo "   2) Manual: sudo apt update && sudo apt install -y python3.9 python3.9-venv python3.9-dev"
+    echo "   3) Or use Ubuntu 22.04 (Python 3.10 in default repos)."
+    return 1
 }
 
 echo "=========================================="
 echo "NAIO deploy2 — env / Foundry / Supervisor (Ubuntu 20.04)"
 echo "=========================================="
+echo "[Hint] Typical path: cd /opt/naio && sudo ./deploy2.sh"
 echo "Project root: $PROJECT_DIR"
 if [ "$PROJECT_DIR" != "$EXPECTED_ROOT" ]; then
     echo "Note: docs often use clone path ${EXPECTED_ROOT}; current root is fine if this repo is complete."
@@ -169,7 +194,7 @@ apt-get update -qq
 MISSING_APT=()
 for pkg in python3 python3-pip python3-venv python3-dev build-essential pkg-config \
     libssl-dev libffi-dev libfreetype6-dev libpng-dev curl git jq ca-certificates \
-    supervisor; do
+    software-properties-common supervisor; do
     if ! dpkg -s "$pkg" &>/dev/null; then
         MISSING_APT+=("$pkg")
     fi
@@ -196,11 +221,11 @@ echo "Step 2: Python venv and pip dependencies..."
 
 PYTHON_CMD=$(ensure_python_for_venv || true)
 if [ -z "$PYTHON_CMD" ]; then
-    install_deadsnakes_python310
+    try_install_deadsnakes_python || exit 1
     PYTHON_CMD=$(ensure_python_for_venv || true)
 fi
 if [ -z "$PYTHON_CMD" ]; then
-    echo "❌ Could not obtain Python 3.${PY_MIN_MINOR}–3.${PY_MAX_MINOR}; install python3.10–3.12 manually."
+    echo "❌ Still no Python 3.${PY_MIN_MINOR}–3.${PY_MAX_MINOR} after deadsnakes. Install python3.9–3.12 manually, then re-run."
     exit 1
 fi
 
