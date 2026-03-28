@@ -183,10 +183,15 @@ def query_downline_deposits(db_path: str, user_address: str, period: str = "all"
             start_ts, end_ts = _get_month_start_end(now_ts, system_start_ts)
 
         if start_ts is not None and end_ts is not None:
-            query = .format(",".join(["?"] * len(downlines)))
+            query = (
+                "SELECT amount_wei FROM deposit_records WHERE user_address IN ({}) "
+                "AND block_timestamp >= ? AND block_timestamp <= ?"
+            ).format(",".join(["?"] * len(downlines)))
             params = downlines + [start_ts, end_ts]
         else:
-            query = .format(",".join(["?"] * len(downlines)))
+            query = (
+                "SELECT amount_wei FROM deposit_records WHERE user_address IN ({})"
+            ).format(",".join(["?"] * len(downlines)))
             params = downlines
 
         cursor = conn.execute(query, params)
