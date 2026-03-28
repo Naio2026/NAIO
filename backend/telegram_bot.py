@@ -43,7 +43,7 @@ except Exception as e:
     raise SystemExit(
         "Missing optional dependency for Telegram bot.\n"
         "Install it with:\n"
-        "  pip install -r requirements.telegram.txt\n"
+        "  pip install -r requirements.txt\n"
         f"Original import error: {e}"
     )
 

@@ -8,7 +8,7 @@
 # This script does NOT change application code. It only:
 #   - Uses the existing backend/venv from deploy2.sh
 #   - Upgrades pip / setuptools / wheel using the official PyPI index
-#   - Reinstalls backend/requirements.txt (and requirements.telegram.txt if present) from PyPI.org
+#   - Reinstalls backend/requirements.txt from PyPI.org
 #
 # Usage (from repo root, e.g. /opt/naio):
 #   sudo ./fix_pip_env.sh
@@ -55,14 +55,6 @@ echo "Step 2: Install backend/requirements.txt from official PyPI ..."
 "$VENV_PY" -m pip install -r "$BACKEND_DIR/requirements.txt" \
     -i "$PYPI_URL" \
     --trusted-host pypi.org --trusted-host files.pythonhosted.org
-
-if [ -f "$BACKEND_DIR/requirements.telegram.txt" ]; then
-    echo ""
-    echo "Step 3: Install backend/requirements.telegram.txt ..."
-    "$VENV_PY" -m pip install -r "$BACKEND_DIR/requirements.telegram.txt" \
-        -i "$PYPI_URL" \
-        --trusted-host pypi.org --trusted-host files.pythonhosted.org
-fi
 
 echo ""
 echo "=========================================="

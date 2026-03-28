@@ -75,10 +75,9 @@ python price_recorder.py
 python keeper_validator.py
 ```
 
-For the Telegram bot:
+For the Telegram bot (same venv; deps are in `requirements.txt`):
 
 ```bash
-pip install -r requirements.telegram.txt
 python telegram_bot.py
 ```
 

@@ -22,12 +22,6 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Telegram bot extras:
-
-```bash
-pip install -r requirements.telegram.txt
-```
-
 ## Configuration
 
 Services read configuration from `.env` (typically `backend/.env`).

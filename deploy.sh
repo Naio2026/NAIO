@@ -426,11 +426,6 @@ if [ -f "requirements.txt" ]; then
 else
     echo "⚠️  requirements.txt not found"
 fi
-if [ -f "requirements.telegram.txt" ]; then
-    echo "   Installing/updating Telegram Bot deps..."
-    pip install -r requirements.telegram.txt -q
-    echo "✅ Telegram Bot deps installed"
-fi
 
 # ============================================
 # Step 4: Environment variables

@@ -16,7 +16,7 @@
 # Usage:
 #   sudo ./deploy2.sh
 #   sudo ./deploy2.sh --force              # Recreate venv, reinstall Foundry if needed, rewrite supervisor
-#   sudo ./deploy2.sh --skip-telegram     # Skip Telegram bot pip extras (Python must still be in range)
+#   sudo ./deploy2.sh --skip-telegram     # Deprecated: no longer skips pip (Telegram deps are in requirements.txt)
 #   sudo ./deploy2.sh --skip-foundry       # Skip Foundry / forge-std / forge build (Python + supervisor only)
 #   sudo ./deploy2.sh --skip-forge-build   # Skip forge build smoke test after deps install
 #
@@ -277,15 +277,8 @@ fi
 echo "   pip install -r requirements.txt ..."
 pip install -r requirements.txt -q
 
-if [ "$SKIP_TELEGRAM" != true ]; then
-    if [ -f "requirements.telegram.txt" ]; then
-        echo "   pip install -r requirements.telegram.txt ..."
-        pip install -r requirements.telegram.txt -q
-    else
-        echo "⚠️  requirements.telegram.txt not found; skipping Telegram extras"
-    fi
-else
-    echo "   Skipped Telegram deps (--skip-telegram)"
+if [ "$SKIP_TELEGRAM" = true ]; then
+    echo "   Note: --skip-telegram is deprecated (Telegram bot deps are included in requirements.txt)."
 fi
 
 echo "✅ Step 2 done"
