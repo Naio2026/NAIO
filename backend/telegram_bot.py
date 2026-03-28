@@ -4755,7 +4755,6 @@ def _more_menu_kb(lang: str = DEFAULT_LANG) -> InlineKeyboardMarkup:
         [
             [InlineKeyboardButton(_t(lang, "menu_help_ops"), callback_data="help_ops")],
             [InlineKeyboardButton(_t(lang, "menu_addr_list"), callback_data="menu_addrs")],
-            [InlineKeyboardButton(_t(lang, "menu_chain_roles"), callback_data="chain_roles")],
             [InlineKeyboardButton(_t(lang, "menu_cmd_list"), callback_data="cmd_list")],
             [InlineKeyboardButton(_t(lang, "menu_back"), callback_data="back_to_main")],
         ]
@@ -4924,6 +4923,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         + _t(lang, "help_menu")
     )
 
+    if update.effective_chat and update.effective_chat.type in ("group", "supergroup"):
+        help_text = _html_escape(help_text)
     await _reply_text_with_mention(update, help_text, reply_markup=_menu_kb(lang))
 
 async def price_pic_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -5377,6 +5378,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 + _t(lang, "help_menu")
             )
 
+            if update.effective_chat and update.effective_chat.type in ("group", "supergroup"):
+                help_text = _html_escape(help_text)
             formatted_text, mention_parse_mode = _format_reply_text(update, help_text)
             if formatted_text and mention_parse_mode:
                 await q.message.reply_text(formatted_text, parse_mode=mention_parse_mode, reply_markup=_menu_kb(lang))
