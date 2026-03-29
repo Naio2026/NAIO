@@ -586,12 +586,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "th": "ที่อยู่คงที่ 5 รายการ",
     },
     "chain_roles_nodes_intro": {
-        "zh-CN": "节点席位共 1000 个，持有者可领取通缩日释放中的节点分红。发送 /nodes 可获取完整节点地址列表（txt 文件）。",
-        "zh-TW": "節點席位共 1000 個，持有者可領取通縮日釋放中的節點分紅。發送 /nodes 可獲取完整節點地址列表（txt 文件）。",
-        "ko": "노드席位 1000개, 보유자는 디플레이션 일일 분배의 노드 배당 수령 가능. /nodes 로 전체 주소 목록(txt) 획득.",
-        "en-US": "1000 node seats; holders claim node share from daily deflation. Send /nodes for full address list (txt).",
-        "ja": "ノード席位1000、保有者はデフレ日次配分のノード配当を請求可能。/nodes で全アドレス一覧(txt)取得。",
-        "th": "席位โหนด 1000 ที่ ผู้ถือรับส่วนแบ่งจาก deflation รายวัน ส่ง /nodes เพื่อรับรายการที่อยู่เต็ม (txt)",
+        "zh-CN": "节点席位共 1000 个，持有者可领取通缩日释放中的节点分红。",
+        "zh-TW": "節點席位共 1000 個，持有者可領取通縮日釋放中的節點分紅。",
+        "ko": "노드 1000석; 보유자는 디플레이션 일일 분배에서 노드 몫을 청구합니다.",
+        "en-US": "1000 node seats; holders claim node share from daily deflation.",
+        "ja": "ノード席位1000。保有者はデフレ日次配分からノード配当を請求できます。",
+        "th": "โหนด 1000 ที่ ผู้ถือรับส่วนแบ่งจากการปล่อยรายวันตาม deflation",
     },
     "label_controller": {
         "zh-CN": "池子地址",
@@ -1096,14 +1096,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en-US": "/price_pic3 or /price_pic3_N - Ignore time window and plot segments by distinct price changes from now backwards; empty N shows all changes, N>0 shows the latest N changes.",
         "ja": "/price_pic3 または /price_pic3_N - 時間ウィンドウを見ず、現在からさかのぼって価格変動ごとに区切って描画します。N なし=すべて、N>0=直近 N 回の価格変動のみ。",
         "th": "/price_pic3 หรือ /price_pic3_N - ไม่สนช่วงเวลา วาดกราฟตามช่วงที่ราคามีการเปลี่ยนแปลงจากตอนนี้ย้อนกลับไป; ถ้าไม่ใส่ N จะแสดงทุกช่วง ถ้า N>0 จะแสดงเฉพาะ N ช่วงล่าสุด",
-    },
-    "help_nodes": {
-        "zh-CN": "/nodes - 获取 1000 节点地址列表（txt 文件）",
-        "zh-TW": "/nodes - 獲取 1000 節點地址列表（txt 文件）",
-        "ko": "/nodes - 1000개 노드 주소 목록(txt) 획득",
-        "en-US": "/nodes - Get 1000 node address list (txt file)",
-        "ja": "/nodes - 1000ノードアドレス一覧(txt)取得",
-        "th": "/nodes - รับรายการที่อยู่โหนด 1000 รายการ (ไฟล์ txt)",
     },
     "help_list_miss": {
         "zh-CN": "/list_miss - 列出有入金但没有推荐关系的地址（用于排查团队业绩缺失）",
@@ -4918,7 +4910,6 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         + _t(lang, "help_price_pic2") + "\n"
         + _t(lang, "help_price_pic3") + "\n"
         + _t(lang, "help_info_query") + "\n"
-        + _t(lang, "help_nodes") + "\n"
         + _t(lang, "help_list_miss") + "\n"
         + _t(lang, "help_menu")
     )
@@ -5374,7 +5365,6 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 + _t(lang, "hash_usage_example") + "\n"
                 + _t(lang, "help_price_pic") + "\n"
                 + _t(lang, "help_info_query") + "\n"
-                + _t(lang, "help_nodes") + "\n"
                 + _t(lang, "help_menu")
             )
 
