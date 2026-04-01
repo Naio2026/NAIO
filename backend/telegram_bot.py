@@ -993,6 +993,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ja": "言語設定は管理者のみ可能です。",
         "th": "เฉพาะแอดมินกลุ่มเท่านั้นที่ตั้งค่าภาษาได้",
     },
+    "hash_admin_only": {
+        "zh-CN": "只有群管理员可以在群聊中使用 /hash 补录入金。",
+        "zh-TW": "只有群管理員可以在群聊中使用 /hash 補錄入金。",
+        "ko": "그룹 관리자만 그룹 채팅에서 /hash로 입금을 수동 보정할 수 있습니다.",
+        "en-US": "Only group admins can use /hash in this group to backfill a deposit.",
+        "ja": "このグループでは管理者のみが /hash で入金を手動補完できます。",
+        "th": "ในกลุ่มนี้เฉพาะแอดมินเท่านั้นที่ใช้ /hash เติมรายการฝากได้",
+    },
     "lang_choose": {
         "zh-CN": "请选择语言：",
         "zh-TW": "請選擇語言：",
@@ -5132,7 +5140,7 @@ async def hash_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if update.effective_chat and update.effective_chat.type in ("group", "supergroup"):
         if not await _is_group_admin(update, context):
-            await _reply_text_with_mention(update, _t(lang, "lang_admin_only"), reply_markup=_menu_kb(lang))
+            await _reply_text_with_mention(update, _t(lang, "hash_admin_only"), reply_markup=_menu_kb(lang))
             return
 
     tx_arg = context.args[0] if context.args else ""
