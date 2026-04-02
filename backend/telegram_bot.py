@@ -3247,10 +3247,10 @@ class BotState:
         return f"底池 USDT 余额（扣除待领）：{_fmt_amount(pool, self.usdt_decimals, self.display_usdt_decimals)} USDT"
 
     def get_pool_naio_text(self) -> str:
-        bal = int(self.naio_contract.functions.balanceOf(self.controller).call())
-        reserved = int(self.controller_contract.functions.reservedNaio().call())
-        pool = bal - reserved if bal > reserved else 0
-        return f"底池 NAIO 余额（扣除待领）：{_fmt_amount(pool, self.naio_decimals, self.display_naio_decimals)} NAIO"
+        supply = int(self.naio_contract.functions.totalSupply().call())
+        burned = int(self.naio_contract.functions.balanceOf(self.burn_address).call())
+        denom = supply - burned if supply > burned else 0
+        return f"底池 NAIO（计价分母=总量-黑洞）：{_fmt_amount(denom, self.naio_decimals, self.display_naio_decimals)} NAIO"
 
     def get_copy_addr_text(self, which: str) -> str:
         which = which.lower()
@@ -3543,7 +3543,7 @@ class BotState:
                 if self.rule_engine_contract is not None
                 else 0
             )
-            f_naio_bal = exe.submit(lambda: int(self.naio_contract.functions.balanceOf(self.controller).call()))
+            f_naio_supply = exe.submit(lambda: int(self.naio_contract.functions.totalSupply().call()))
             f_reserved_naio = exe.submit(lambda: int(self.controller_contract.functions.reservedNaio().call()))
             f_referral_pool = exe.submit(lambda: int(self.controller_contract.functions.referralPoolNaio().call()))
             f_burn = exe.submit(lambda: int(self.naio_contract.functions.balanceOf(self.burn_address).call()))
@@ -3565,7 +3565,7 @@ class BotState:
             usdt_bal = _call_with_retry(f_usdt_bal.result)
             reserved_usdt = _call_with_retry(f_reserved_usdt.result)
             rule_pool_usdt = _call_with_retry(f_rule_pool_usdt.result, default=0)
-            naio_bal = _call_with_retry(f_naio_bal.result)
+            naio_supply = _call_with_retry(f_naio_supply.result)
             reserved_naio = _call_with_retry(f_reserved_naio.result)
             referral_pool = _call_with_retry(f_referral_pool.result)
             burn_balance = _call_with_retry(f_burn.result)
@@ -3584,8 +3584,8 @@ class BotState:
         pool_usdt_s = _fmt_amount(rule_pool_usdt, self.usdt_decimals, self.display_usdt_decimals)
         reserved_usdt_s = _fmt_amount(reserved_usdt, self.usdt_decimals, self.display_usdt_decimals)
 
-        pool_naio = naio_bal - reserved_naio if naio_bal > reserved_naio else 0
-        pool_naio_s = _fmt_amount(pool_naio, self.naio_decimals, self.display_naio_decimals)
+        price_denom_naio = naio_supply - burn_balance if naio_supply > burn_balance else 0
+        pool_naio_s = _fmt_amount(price_denom_naio, self.naio_decimals, self.display_naio_decimals)
         reserved_naio_s = _fmt_amount(reserved_naio, self.naio_decimals, self.display_naio_decimals)
         referral_pool_s = _fmt_amount(referral_pool, self.naio_decimals, self.display_naio_decimals)
 
