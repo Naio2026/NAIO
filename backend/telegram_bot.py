@@ -898,12 +898,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "th": "📘 คู่มือออนเชน",
     },
     "ops_help_desc": {
-        "zh-CN": "说明：\n1）以下 OP 都是「向池子地址转一笔很小的 BNB」触发，BNB 会原路退回，你实际消耗的是 Gas；\n2）初始注资请向“初始注资地址”转 USDT，并通过 0.001 BNB OP 触发，不走记账口径。",
-        "zh-TW": "說明：\n1）以下 OP 都是「向池子地址轉一筆很小的 BNB」觸發，BNB 會原路退回，你實際消耗的是 Gas；\n2）初始注資請向「初始注資地址」轉 USDT，並透過 0.001 BNB OP 觸發，不走記帳口徑。",
-        "ko": "안내:\n1) 아래 OP 들은 풀 주소로 소량의 BNB 를 전송하면 실행되며, BNB 는 되돌려지고 실제 비용은 가스입니다.\n2) 초기 자금 주입은 \"초기 자금 주소\"로 USDT 를 송금한 뒤, 0.001 BNB OP 로 트리거하며, 별도의 회계 경로를 사용하지 않습니다.",
-        "en-US": "Notes:\n1) The OP actions below are triggered by sending a tiny amount of BNB to the pool; BNB is refunded and you only pay gas.\n2) For initial pool funding, send USDT to the \"Initial Pool Seeder\" address and trigger it via the 0.001 BNB OP; this does not go through the keeper accounting path.",
-        "ja": "説明：\n1）以下の OP はすべて「プールアドレスへ少額のBNBを送る」ことでトリガーされ、BNB は元のアドレスに返金され、実際のコストはガスのみです。\n2）初期注資は「初期注資アドレス」に USDT を送金し、0.001 BNB の OP でトリガーし、記帳用の経路は通りません。",
-        "th": "คำอธิบาย:\n1) OP ด้านล่างทั้งหมดถูกเรียกใช้โดยการส่ง BNB จำนวนน้อยไปยังที่อยู่ Pool โดย BNB จะถูกส่งคืน คุณจ่ายเฉพาะค่าแก๊สเท่านั้น\n2) การเติมสภาพคล่องเริ่มต้น ให้โอน USDT ไปยัง “ที่อยู่เติมสภาพคล่องเริ่มต้น” แล้วใช้ OP 0.001 BNB ในการทริกเกอร์ โดยไม่ผ่านเส้นทาง accounting ของ keeper",
+        "zh-CN": "说明：\n1）以下 OP 都是「向池子地址转一笔很小的 BNB」触发，BNB 会原路退回，你实际消耗的是 Gas；\n2）初始注资请向“初始注资地址”转 USDT，并通过 0.001 BNB OP 触发，不走记账口径；\n3）特别说明：本项目不支持使用多签名地址，只支持普通地址。",
+        "zh-TW": "說明：\n1）以下 OP 都是「向池子地址轉一筆很小的 BNB」觸發，BNB 會原路退回，你實際消耗的是 Gas；\n2）初始注資請向「初始注資地址」轉 USDT，並透過 0.001 BNB OP 觸發，不走記帳口徑；\n3）特別說明：本項目不支援使用多簽地址，只支援普通地址。",
+        "ko": "안내:\n1) 아래 OP 들은 풀 주소로 소량의 BNB 를 전송하면 실행되며, BNB 는 되돌려지고 실제 비용은 가스입니다.\n2) 초기 자금 주입은 \"초기 자금 주소\"로 USDT 를 송금한 뒤, 0.001 BNB OP 로 트리거하며, 별도의 회계 경로를 사용하지 않습니다.\n3) 중요: 본 프로젝트는 멀티시그 주소를 지원하지 않으며, 일반 주소만 지원합니다.",
+        "en-US": "Notes:\n1) The OP actions below are triggered by sending a tiny amount of BNB to the pool; BNB is refunded and you only pay gas.\n2) For initial pool funding, send USDT to the \"Initial Pool Seeder\" address and trigger it via the 0.001 BNB OP; this does not go through the keeper accounting path.\n3) Special note: This project does not support multisig addresses; only regular addresses are supported.",
+        "ja": "説明：\n1）以下の OP はすべて「プールアドレスへ少額のBNBを送る」ことでトリガーされ、BNB は元のアドレスに返金され、実際のコストはガスのみです。\n2）初期注資は「初期注資アドレス」に USDT を送金し、0.001 BNB の OP でトリガーし、記帳用の経路は通りません。\n3）特別説明：本プロジェクトはマルチシグアドレスをサポートしておらず、通常アドレスのみ対応しています。",
+        "th": "คำอธิบาย:\n1) OP ด้านล่างทั้งหมดถูกเรียกใช้โดยการส่ง BNB จำนวนน้อยไปยังที่อยู่ Pool โดย BNB จะถูกส่งคืน คุณจ่ายเฉพาะค่าแก๊สเท่านั้น\n2) การเติมสภาพคล่องเริ่มต้น ให้โอน USDT ไปยัง “ที่อยู่เติมสภาพคล่องเริ่มต้น” แล้วใช้ OP 0.001 BNB ในการทริกเกอร์ โดยไม่ผ่านเส้นทาง accounting ของ keeper\n3) หมายเหตุพิเศษ: โปรเจกต์นี้ไม่รองรับที่อยู่แบบมัลติซิก รองรับเฉพาะที่อยู่ปกติเท่านั้น",
     },
     "ops_help_other_ops": {
         "zh-CN": "其他常用操作（非 OP）：\n- 入金：把 USDT 直接转到池子地址（金额不合规会自动退款）\n- 卖出：把 NAIO 直接转到池子地址（转多少=卖多少）\n- 绑定推荐：推荐人给你转 ≥ 0.001 NAIO（只绑定一次）",
@@ -1434,6 +1434,54 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en-US": "Referrer: None",
         "ja": "紹介者: なし",
         "th": "ผู้แนะนำ: ไม่มี",
+    },
+    "info_address_type": {
+        "zh-CN": "地址类型：{kind}",
+        "zh-TW": "地址類型：{kind}",
+        "ko": "주소 유형: {kind}",
+        "en-US": "Address Type: {kind}",
+        "ja": "アドレスタイプ: {kind}",
+        "th": "ประเภทที่อยู่: {kind}",
+    },
+    "info_address_type_eoa": {
+        "zh-CN": "EOA",
+        "zh-TW": "EOA",
+        "ko": "EOA",
+        "en-US": "EOA",
+        "ja": "EOA",
+        "th": "EOA",
+    },
+    "info_address_type_non_eoa": {
+        "zh-CN": "非EOA",
+        "zh-TW": "非EOA",
+        "ko": "비 EOA",
+        "en-US": "Non-EOA",
+        "ja": "非EOA",
+        "th": "ไม่ใช่ EOA",
+    },
+    "info_address_type_note_code": {
+        "zh-CN": "说明：检测到链上合约代码，因此这不是传统无代码 EOA 地址。",
+        "zh-TW": "說明：檢測到鏈上合約代碼，因此這不是傳統無代碼 EOA 地址。",
+        "ko": "설명: 온체인 코드가 감지되어 이 주소는 전통적인 무코드 EOA 주소가 아닙니다.",
+        "en-US": "Note: On-chain code was detected, so this is not a traditional code-free EOA address.",
+        "ja": "説明: オンチェーンコードが検出されたため、このアドレスは従来のコードを持たない EOA ではありません。",
+        "th": "หมายเหตุ: ตรวจพบโค้ดบนเชน ดังนั้นที่อยู่นี้จึงไม่ใช่ EOA แบบดั้งเดิมที่ไม่มีโค้ด",
+    },
+    "info_address_type_note_7702": {
+        "zh-CN": "说明：检测到 EIP-7702 委托代码，因此这不是传统无代码 EOA 地址。委托目标：{target}",
+        "zh-TW": "說明：檢測到 EIP-7702 委託代碼，因此這不是傳統無代碼 EOA 地址。委託目標：{target}",
+        "ko": "설명: EIP-7702 위임 코드가 감지되어 이 주소는 전통적인 무코드 EOA 주소가 아닙니다. 위임 대상: {target}",
+        "en-US": "Note: EIP-7702 delegation code was detected, so this is not a traditional code-free EOA address. Delegated target: {target}",
+        "ja": "説明: EIP-7702 の委任コードが検出されたため、このアドレスは従来のコードを持たない EOA ではありません。委任先: {target}",
+        "th": "หมายเหตุ: ตรวจพบโค้ดมอบหมาย EIP-7702 ดังนั้นที่อยู่นี้จึงไม่ใช่ EOA แบบดั้งเดิมที่ไม่มีโค้ด ปลายทางที่มอบหมาย: {target}",
+    },
+    "info_address_type_note_inactive": {
+        "zh-CN": "说明：此地址没有任何链上活动，有可能误判。",
+        "zh-TW": "說明：此地址沒有任何鏈上活動，有可能誤判。",
+        "ko": "설명: 이 주소는 온체인 활동이 전혀 없어 오판 가능성이 있습니다.",
+        "en-US": "Note: This address has no visible on-chain activity, so misclassification is possible.",
+        "ja": "説明: このアドレスには確認できるオンチェーン活動がないため、誤判定の可能性があります。",
+        "th": "หมายเหตุ: ที่อยู่นี้ไม่มีความเคลื่อนไหวบนเชนที่มองเห็นได้ จึงอาจตัดสินคลาดเคลื่อนได้",
     },
     "info_direct_count": {
         "zh-CN": "直推有效人数：{count}",
@@ -3978,7 +4026,7 @@ class BotState:
                         return default
                     time.sleep(delay * (i + 1))
 
-        with ThreadPoolExecutor(max_workers=12) as exe:
+        with ThreadPoolExecutor(max_workers=15) as exe:
 
             f_user_info = exe.submit(lambda: self.controller_contract.functions.users(a).call())
 
@@ -3997,6 +4045,9 @@ class BotState:
             f_node_usdt = exe.submit(lambda: int(self.node_seat_pool_contract.functions.pendingUsdt(a).call()) if self.node_seat_pool_contract else 0)
             f_node_naio = exe.submit(lambda: int(self.node_seat_pool_contract.functions.pendingNaio(a).call()) if self.node_seat_pool_contract else 0)
             f_total_claimed_earnings = exe.submit(lambda: int(self.controller_contract.functions.totalClaimedEarningsUsdt(a).call()))
+            f_addr_code = exe.submit(lambda: bytes(self.w3.eth.get_code(a)))
+            f_addr_nonce = exe.submit(lambda: int(self.w3.eth.get_transaction_count(a)))
+            f_addr_native_balance = exe.submit(lambda: int(self.w3.eth.get_balance(a)))
 
             user_info = _call_with_retry(f_user_info.result, default=())
             pending_static = _call_with_retry(f_pending_static.result, default=0)
@@ -4013,6 +4064,9 @@ class BotState:
             node_usdt = _call_with_retry(f_node_usdt.result, default=0)
             node_naio = _call_with_retry(f_node_naio.result, default=0)
             total_claimed_earnings = _call_with_retry(f_total_claimed_earnings.result, default=0)
+            addr_code = _call_with_retry(f_addr_code.result, default=None)
+            addr_nonce = _call_with_retry(f_addr_nonce.result, default=None)
+            addr_native_balance = _call_with_retry(f_addr_native_balance.result, default=None)
 
         principal = int(user_info[0]) if len(user_info) > 0 else 0
         power = int(user_info[1]) if len(user_info) > 1 else 0
@@ -4072,6 +4126,27 @@ class BotState:
         except Exception:
             referrer_addr = None
 
+        address_type_line = None
+        address_type_note = None
+        if addr_code is not None:
+            code_bytes = bytes(addr_code)
+            if len(code_bytes) == 0:
+                address_type_line = _t(lang, "info_address_type", kind=_t(lang, "info_address_type_eoa"))
+                if int(addr_nonce or 0) == 0 and int(addr_native_balance or 0) == 0:
+                    address_type_note = _t(lang, "info_address_type_note_inactive")
+            else:
+                address_type_line = _t(lang, "info_address_type", kind=_t(lang, "info_address_type_non_eoa"))
+                if len(code_bytes) == 23 and code_bytes[:3] == b"\xef\x01\x00":
+                    try:
+                        delegate_target = Web3.to_checksum_address("0x" + code_bytes[3:].hex())
+                    except Exception:
+                        delegate_target = "0x" + code_bytes[3:].hex()
+                    address_type_note = _t(
+                        lang, "info_address_type_note_7702", target=_as_code(delegate_target)
+                    )
+                else:
+                    address_type_note = _t(lang, "info_address_type_note_code")
+
         first_deposit_str = _fmt_ts_local(first_deposit_ts, lang) if first_deposit_ts > 0 else None
 
         principal_s = _fmt_amount(principal, self.usdt_decimals, self.display_usdt_decimals)
@@ -4115,6 +4190,10 @@ class BotState:
         lines: list[str] = []
         lines.append(_t(lang, "info_title"))
         lines.append(_t(lang, "info_address", addr=_as_code(a)))
+        if address_type_line:
+            lines.append(address_type_line)
+        if address_type_note:
+            lines.append(address_type_note)
         lines.append("")
 
         lines.append(_t(lang, "info_basic"))
