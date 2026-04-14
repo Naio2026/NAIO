@@ -6,6 +6,7 @@ import json
 import asyncio
 import time
 import sqlite3
+import csv
 import io
 import re
 import random
@@ -14,8 +15,8 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from decimal import Decimal
-from typing import Optional, Set, List
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Optional, Set, List, Tuple
 
 from dotenv import load_dotenv
 from web3 import Web3
@@ -23,10 +24,10 @@ import web3
 from web3.middleware import ExtraDataToPOAMiddleware
 
 try:
-    from query_stats import query_downline_deposits
+    from query_stats import query_address_referral_map, query_downline_deposits
 except ImportError:
-
     query_downline_deposits = None
+    query_address_referral_map = None
 
 try:
     from telegram import ChatMemberUpdated, InlineKeyboardButton, InlineKeyboardMarkup, InputFile, Update
@@ -94,6 +95,111 @@ def _fmt_amount(value_wei: int, token_decimals: int, display_decimals: int) -> s
         token_decimals = 18
     d = Decimal(int(value_wei)) / (Decimal(10) ** Decimal(token_decimals))
     return _fmt_decimal_human(d, display_decimals)
+
+
+# NAIOController deflation / reinvest — keep in sync with contracts/src/NAIOController.sol
+_EPOCHS_PER_MONTH_FOR_UNLOCK = 30
+_DEFLATION_BURN_BPS = 4000
+_DEFLATION_ECO_BPS = 500
+_DEFLATION_NEWUSER_BPS = 100
+_DEFLATION_NODE_BPS = 400
+_DEFLATION_INDEPENDENT_BPS = 450
+_DEFLATION_REFERRAL_BPS = 1050
+
+
+def _daily_release_bps_at_epoch(epoch: int) -> int:
+    if epoch < 0:
+        return 0
+    month_index = epoch // _EPOCHS_PER_MONTH_FOR_UNLOCK
+    steps = month_index if month_index < 10 else 10
+    return 200 + steps * 10
+
+
+def _build_deflation_split(deflation_amount: int) -> dict[str, int]:
+    d = int(deflation_amount)
+    burn = (d * _DEFLATION_BURN_BPS) // 10000
+    eco = (d * _DEFLATION_ECO_BPS) // 10000
+    new_user = (d * _DEFLATION_NEWUSER_BPS) // 10000
+    node = (d * _DEFLATION_NODE_BPS) // 10000
+    independent = (d * _DEFLATION_INDEPENDENT_BPS) // 10000
+    referral = (d * _DEFLATION_REFERRAL_BPS) // 10000
+    static_amt = d - burn - eco - new_user - node - independent - referral
+    return {
+        "burn": burn,
+        "eco": eco,
+        "new_user": new_user,
+        "node": node,
+        "independent": independent,
+        "referral": referral,
+        "static": static_amt,
+    }
+
+
+def _burn_to_execute(burn_amount: int, withdraw_burn_used: int) -> int:
+    """Matches NAIOController._executeBurnForEpoch burn transfer amount."""
+    w = int(withdraw_burn_used)
+    if w <= 0:
+        return int(burn_amount)
+    b = int(burn_amount)
+    if w >= b:
+        return 0
+    return b - w
+
+
+def _simulate_reinvest_pool_after_settling_epochs(
+    *,
+    bal: int,
+    reserved: int,
+    start_epoch: int,
+    target_epoch: int,
+    reward_by_day: dict[int, int],
+    total_power_by_day: dict[int, int],
+    withdraw_burn_used_by_epoch: dict[int, int],
+) -> Tuple[Optional[int], bool]:
+    """
+    Simulates sequential deflation settlements for epochs [start_epoch, target_epoch] (inclusive)
+    using the same math as NAIOController.poke / _settleDeflationEpoch. State is snapshotted at query time.
+
+    Returns (reinvest_pool_wei_for_target_epoch_after_full_run, completed_all).
+    If settlement stalls (NoDeflation path), returns (None, False).
+    """
+    if target_epoch < 0 or start_epoch > target_epoch:
+        return (None, False)
+
+    bal_i = int(bal)
+    reserved_i = int(reserved)
+
+    for epoch in range(int(start_epoch), int(target_epoch) + 1):
+        if epoch > 0:
+            y = epoch - 1
+            y_reward = int(reward_by_day.get(y, 0))
+            y_tot = int(total_power_by_day.get(y, 0))
+            if y_reward > 0 and y_tot == 0:
+                reward_by_day[epoch] = int(reward_by_day.get(epoch, 0)) + y_reward
+                reward_by_day[y] = 0
+
+        pool_token = bal_i - reserved_i
+        rate_bps = _daily_release_bps_at_epoch(epoch)
+        if pool_token <= 0 or rate_bps == 0:
+            return (None, False)
+
+        deflation_amount = (pool_token * rate_bps) // 10000
+        if deflation_amount == 0:
+            return (None, False)
+
+        c = _build_deflation_split(deflation_amount)
+        w_used = int(withdraw_burn_used_by_epoch.get(epoch, 0))
+        burn_to = _burn_to_execute(c["burn"], w_used)
+
+        bal_i -= c["node"] + burn_to
+        reserved_i += c["eco"] + c["independent"] + c["new_user"] + c["referral"] + c["static"]
+
+        nu = int(c["new_user"])
+        if nu > 0:
+            reward_by_day[epoch] = int(reward_by_day.get(epoch, 0)) + nu
+
+    final_pool = int(reward_by_day.get(int(target_epoch), 0))
+    return (final_pool, True)
 
 def _as_code(s: str) -> str:
     return f"`{s}`"
@@ -1283,6 +1389,118 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ja": "以下のアドレスは deposit_records に入金履歴はありますが、referral_relations に対応する紹介関係がありません：",
         "th": "ที่อยู่ต่อไปนี้มีการฝากใน deposit_records แต่ไม่มีความสัมพันธ์ผู้แนะนำใน referral_relations:",
     },
+    "help_address_map": {
+        "zh-CN": "/address_map 0x地址 - 导出下级关系为单个 CSV（内含两段表，基于服务器数据库）",
+        "zh-TW": "/address_map 0x地址 - 匯出下級關係為單一 CSV（內含兩段表，基於伺服器資料庫）",
+        "ko": "/address_map 0x주소 - 하위 관계를 단일 CSV(표 2개 구간)로 내보내기(서버 DB)",
+        "en-US": "/address_map 0xAddr - Export one CSV with two sections (server DB).",
+        "ja": "/address_map 0xアドレス - 下位関係を1つのCSV（2セクション）でエクスポート（サーバーDB）",
+        "th": "/address_map 0xที่อยู่ - ส่งออก CSV ไฟล์เดียว มี 2 ช่วงตาราง (DB บนเซิร์ฟเวอร์)",
+    },
+    "address_map_usage": {
+        "zh-CN": "用法：/address_map 0x<40位地址>",
+        "zh-TW": "用法：/address_map 0x<40位地址>",
+        "ko": "사용법: /address_map 0x<40자리 주소>",
+        "en-US": "Usage: /address_map 0x<40-hex address>",
+        "ja": "使い方: /address_map 0x<40桁アドレス>",
+        "th": "วิธีใช้: /address_map 0x<ที่อยู่ 40 ตัว>",
+    },
+    "address_map_unavailable": {
+        "zh-CN": "地址关系导出不可用（query_stats 模块未加载）。",
+        "zh-TW": "地址關係匯出不可用（query_stats 模組未載入）。",
+        "ko": "주소 관계 내보내기를 사용할 수 없습니다(query_stats 미로드).",
+        "en-US": "Address map export unavailable (query_stats not loaded).",
+        "ja": "エクスポート不可（query_stats 未ロード）。",
+        "th": "ไม่สามารถส่งออกแผนที่อยู่ได้ (ไม่มี query_stats)",
+    },
+    "address_map_err_db_not_found": {
+        "zh-CN": "数据库文件不存在（请检查 PRICE_DB_PATH）。",
+        "zh-TW": "資料庫檔案不存在（請檢查 PRICE_DB_PATH）。",
+        "ko": "DB 파일이 없습니다(PRICE_DB_PATH 확인).",
+        "en-US": "Database file not found (check PRICE_DB_PATH).",
+        "ja": "DBファイルがありません（PRICE_DB_PATH を確認）。",
+        "th": "ไม่พบไฟล์ฐานข้อมูล (ตรวจสอบ PRICE_DB_PATH)",
+    },
+    "address_map_err_no_tables": {
+        "zh-CN": "数据库中缺少 deposit_records / referral_relations 表。",
+        "zh-TW": "資料庫中缺少 deposit_records / referral_relations 表。",
+        "ko": "DB에 deposit_records / referral_relations 테이블이 없습니다.",
+        "en-US": "Missing deposit_records / referral_relations tables in DB.",
+        "ja": "DB に deposit_records / referral_relations がありません。",
+        "th": "ใน DB ไม่มีตาราง deposit_records / referral_relations",
+    },
+    "address_map_empty": {
+        "zh-CN": "该地址在数据库中没有下级关系（或关系为空）。",
+        "zh-TW": "該地址在資料庫中沒有下級關係（或關係為空）。",
+        "ko": "DB에 하위 추천 관계가 없습니다.",
+        "en-US": "No downline relations found in DB for this address.",
+        "ja": "DB 上このアドレスに下位関係がありません。",
+        "th": "ไม่พบความสัมพันธ์ทีมใต้สายสำหรับที่อยู่นี้ใน DB",
+    },
+    "address_map_root": {
+        "zh-CN": "根地址：{addr}\n下级地址数：{count}",
+        "zh-TW": "根地址：{addr}\n下級地址數：{count}",
+        "ko": "루트 주소: {addr}\n하위 주소 수: {count}",
+        "en-US": "Root: {addr}\nDownline addresses: {count}",
+        "ja": "ルート: {addr}\n下位アドレス数: {count}",
+        "th": "ราก: {addr}\nจำนวนที่อยู่ในทีม: {count}",
+    },
+    "address_map_table1_title": {
+        "zh-CN": "表1：按代数汇总",
+        "zh-TW": "表1：按代數匯總",
+        "ko": "표1: 세대별 요약",
+        "en-US": "Table 1: By generation",
+        "ja": "表1: 世代別サマリー",
+        "th": "ตาราง 1: สรุปตามรุ่น",
+    },
+    "address_map_table1_head": {
+        "zh-CN": "代数 | 人数 | 该层入金合计(USDT) | 团队业绩累计(USDT)",
+        "zh-TW": "代數 | 人數 | 該層入金合計(USDT) | 團隊業績累計(USDT)",
+        "ko": "대수 | 인원 | 해당 층 입금 합계(USDT) | 팀 누적 실적(USDT)",
+        "en-US": "Gen | Count | Layer deposits (USDT) | Cumulative team (USDT)",
+        "ja": "世代 | 人数 | 当層入金計(USDT) | チーム累計(USDT)",
+        "th": "รุ่น | จำนวน | ยอดฝากชั้นนี้ (USDT) | ยอดทีมสะสม (USDT)",
+    },
+    "address_map_table2_title": {
+        "zh-CN": "表2：下级地址明细",
+        "zh-TW": "表2：下級地址明細",
+        "ko": "표2: 하위 주소 상세",
+        "en-US": "Table 2: Downline addresses",
+        "ja": "表2: 下位アドレス明細",
+        "th": "ตาราง 2: รายการที่อยู่ในทีม",
+    },
+    "address_map_table2_head": {
+        "zh-CN": "地址 | 代数 | 该地址累计入金(USDT)",
+        "zh-TW": "地址 | 代數 | 該地址累計入金(USDT)",
+        "ko": "주소 | 대수 | 해당 주소 누적 입금(USDT)",
+        "en-US": "Address | Gen | Total deposit (USDT)",
+        "ja": "アドレス | 世代 | 当該アドレス累計入金(USDT)",
+        "th": "ที่อยู่ | รุ่น | ยอดฝากสะสม (USDT)",
+    },
+    "address_map_note": {
+        "zh-CN": "说明：代数=相对根地址的层级；入金来自 deposit_records 汇总；关系边来自 referral_relations 与 deposit_records.referrer。",
+        "zh-TW": "說明：代數=相對根地址的層級；入金來自 deposit_records 匯總；關係邊來自 referral_relations 與 deposit_records.referrer。",
+        "ko": "안내: 대수=루트 대비 층; 입금은 deposit_records 합산; 관계는 referral_relations 및 deposit_records.referrer.",
+        "en-US": "Note: Gen = depth from root; deposits sum deposit_records; edges from referral_relations + deposit_records.referrer.",
+        "ja": "説明: 世代=ルートからの深さ; 入金は deposit_records 集計; 辺は referral_relations と deposit_records.referrer。",
+        "th": "หมายเหตุ: รุ่น=ระดับจากราก; ยอดฝากรวมจาก deposit_records; ความสัมพันธ์จาก referral_relations + deposit_records.referrer",
+    },
+    "address_map_caption_csv": {
+        "zh-CN": "根地址：{addr}\n下级地址数：{count}\n\n单个 CSV（UTF-8 BOM）内上下两段：先「按代数汇总」，再「下级地址明细」。CSV 本身不支持多工作表；若需多 Sheet 请用脚本转 xlsx。",
+        "zh-TW": "根地址：{addr}\n下級地址數：{count}\n\n單一 CSV（UTF-8 BOM）內上下兩段：先「按代數匯總」，再「下級地址明細」。CSV 不支援多工作表；需多 Sheet 請轉 xlsx。",
+        "ko": "루트: {addr}\n하위 주소 수: {count}\n\n단일 CSV(UTF-8 BOM)에 표 2개 구간. CSV는 시트 분리 불가; xlsx는 별도 변환.",
+        "en-US": "Root: {addr}\nDownline: {count}\n\nOne CSV (UTF-8 BOM): section 1 = by generation, section 2 = addresses. Plain CSV has no sheets; use xlsx for multiple sheets.",
+        "ja": "ルート: {addr}\n下位: {count}\n\n1つのCSV（UTF-8 BOM）に表を2段。CSVにシートは無い→xlsxは別途。",
+        "th": "ราก: {addr}\nทีม: {count}\n\nCSV ไฟล์เดียว (UTF-8 BOM) มี 2 ช่วง CSV ไม่มีหลายชีต ใช้ xlsx ถ้าต้องการ",
+    },
+    "address_map_sent_file": {
+        "zh-CN": "已发送单个 CSV 文件。列中含 wei 与 *_usdt。",
+        "zh-TW": "已傳送單一 CSV。欄位含 wei 與 *_usdt。",
+        "ko": "단일 CSV 전송. wei 및 *_usdt 열 포함.",
+        "en-US": "Single CSV sent (wei + *_usdt columns).",
+        "ja": "単一CSVを送信（wei と *_usdt 列）。",
+        "th": "ส่ง CSV ไฟล์เดียว (คอลัมน์ wei และ *_usdt)",
+    },
     "help_menu": {
         "zh-CN": "\n\n💡 提示：使用 /start 可打开主菜单，通过按钮快速访问各项功能。",
         "zh-TW": "\n\n💡 提示：使用 /start 可打開主選單，通過按鈕快速訪問各項功能。",
@@ -1418,6 +1636,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en-US": "Power: {amt}",
         "ja": "パワー: {amt}",
         "th": "พลัง: {amt}",
+    },
+    "info_power_share": {
+        "zh-CN": "算力占比（全网）：{pct}",
+        "zh-TW": "算力占比（全網）：{pct}",
+        "ko": "파워 비중(전체 네트워크): {pct}",
+        "en-US": "Power share (network): {pct}",
+        "ja": "パワー比率（ネットワーク全体）: {pct}",
+        "th": "สัดส่วนพลังเทียบทั้งเครือข่าย: {pct}",
     },
     "info_referrer": {
         "zh-CN": "推荐人：{addr}",
@@ -1619,13 +1845,29 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ja": "当該ユーザーのウェイト: {amt}",
         "th": "น้ำหนักของผู้ใช้นี้: {amt}",
     },
+    "info_new_user_claimable": {
+        "zh-CN": "可领收益：{amt} NAIO",
+        "zh-TW": "可領收益：{amt} NAIO",
+        "ko": "수령 가능 수익: {amt} NAIO",
+        "en-US": "Claimable: {amt} NAIO",
+        "ja": "受取可能: {amt} NAIO",
+        "th": "รับได้: {amt} NAIO",
+    },
+    "info_new_user_today_header": {
+        "zh-CN": "[以下是 今日第 {day} 日(epoch)，截至当期时间的情况]",
+        "zh-TW": "[以下是 今日第 {day} 日(epoch)，截至當期時間的情況]",
+        "ko": "[아래: 오늘 epoch {day}, 조회 시점까지의 추정]",
+        "en-US": "[Below: today epoch {day}, estimated as of query time]",
+        "ja": "[以下: 本日 epoch {day}、照会時点までの推定]",
+        "th": "[ด้านล่าง: epoch วันนี้ {day} ณ เวลาที่สอบถาม]",
+    },
     "info_new_user_estimated": {
         "zh-CN": "估算可领：{amt} NAIO",
         "zh-TW": "估算可領：{amt} NAIO",
-        "ko": "예상 수령 가능: {amt} NAIO",
-        "en-US": "Estimated Claimable: {amt} NAIO",
-        "ja": "推定受取可能: {amt} NAIO",
-        "th": "ประมาณการรับได้: {amt} NAIO",
+        "ko": "추정 수령: {amt} NAIO",
+        "en-US": "Est. claimable: {amt} NAIO",
+        "ja": "推定受取: {amt} NAIO",
+        "th": "ประมาณการรับ: {amt} NAIO",
     },
     "info_earnings": {
         "zh-CN": "💰 收益信息",
@@ -2334,6 +2576,20 @@ CONTROLLER_ABI = [
             {"internalType": "address", "name": "", "type": "address"},
         ],
         "name": "newUserEligiblePower",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [{"internalType": "uint32", "name": "", "type": "uint32"}],
+        "name": "withdrawBurnUsedByEpoch",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "totalPower",
         "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
         "stateMutability": "view",
         "type": "function",
@@ -3604,7 +3860,6 @@ class BotState:
                 ).call()
             )
             f_epoch_stats = exe.submit(self._get_epoch_stats)
-            f_withdraw_burn_epoch = exe.submit(lambda: int(self.controller_contract.functions.withdrawBurnEpoch().call()))
             f_withdraw_burn_quota = exe.submit(lambda: int(self.controller_contract.functions.withdrawBurnQuotaToken().call()))
             f_withdraw_burn_used = exe.submit(lambda: int(self.controller_contract.functions.withdrawBurnUsedToken().call()))
             f_queue_stats = exe.submit(self._get_withdraw_queue_stats)
@@ -3622,7 +3877,6 @@ class BotState:
             last_epoch = _call_with_retry(f_last_epoch.result)
             snap = _call_with_retry(f_deflation_snapshot.result, default=(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
             dep_sum, sell_sum = _call_with_retry(f_epoch_stats.result, (0, 0))
-            withdraw_burn_epoch = _call_with_retry(f_withdraw_burn_epoch.result, default=0)
             withdraw_burn_quota = _call_with_retry(f_withdraw_burn_quota.result, default=0)
             withdraw_burn_used = _call_with_retry(f_withdraw_burn_used.result, default=0)
             queue_pending, queue_users = _call_with_retry(f_queue_stats.result, (0, 0))
@@ -3661,8 +3915,6 @@ class BotState:
         month_index = int(current_epoch) // epochs_per_month
         steps = min(month_index, 10)
         current_rate_bps = 200 + (steps * 10)
-
-        burn_epoch_label = f"{withdraw_burn_epoch}"
 
         snap_epoch = int(snap[0]) if len(snap) > 0 else 0
         snap_deflation = int(snap[5]) if len(snap) > 5 else 0
@@ -3720,7 +3972,7 @@ class BotState:
             f"  {_t(lang, 'label_catchup_epochs')}: {catchup_epochs}",
             "",
             _t(lang, "chain_info_section_withdraw"),
-            f"  {_t(lang, 'label_withdraw_limit')}: {burn_remaining_s} NAIO (epoch {burn_epoch_label})",
+            f"  {_t(lang, 'label_withdraw_limit')}: {burn_remaining_s} NAIO (epoch {current_epoch})",
             f"  {_t(lang, 'label_withdraw_limit_initial')}: {burn_quota_s} NAIO",
             f"  {_t(lang, 'label_withdraw_limit_used')}: {burn_used_s} NAIO",
             f"  {_t(lang, 'label_withdraw_queue_pending')}: {queue_pending_s} USDT",
@@ -4026,9 +4278,10 @@ class BotState:
                         return default
                     time.sleep(delay * (i + 1))
 
-        with ThreadPoolExecutor(max_workers=15) as exe:
+        with ThreadPoolExecutor(max_workers=16) as exe:
 
             f_user_info = exe.submit(lambda: self.controller_contract.functions.users(a).call())
+            f_total_power = exe.submit(lambda: int(self.controller_contract.functions.totalPower().call()))
 
             f_pending_static = exe.submit(lambda: int(self.controller_contract.functions.pendingStaticNaio(a).call()))
             f_pending_naio = exe.submit(lambda: int(self.controller_contract.functions.pendingNaio(a).call()))
@@ -4050,6 +4303,7 @@ class BotState:
             f_addr_native_balance = exe.submit(lambda: int(self.w3.eth.get_balance(a)))
 
             user_info = _call_with_retry(f_user_info.result, default=())
+            total_power_net = _call_with_retry(f_total_power.result, default=0)
             pending_static = _call_with_retry(f_pending_static.result, default=0)
             pending_naio = _call_with_retry(f_pending_naio.result, default=0)
             pending_usdt = _call_with_retry(f_pending_usdt.result, default=0)
@@ -4151,6 +4405,11 @@ class BotState:
 
         principal_s = _fmt_amount(principal, self.usdt_decimals, self.display_usdt_decimals)
         power_s = _fmt_amount(power, 18, 2)
+        if total_power_net > 0:
+            q = (Decimal(int(power)) * Decimal(100)) / Decimal(int(total_power_net))
+            power_share_s = f"{q.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}%"
+        else:
+            power_share_s = "0.00%"
         locked_s = _fmt_amount(locked, self.usdt_decimals, self.display_usdt_decimals)
         withdrawn_s = _fmt_amount(withdrawn, self.usdt_decimals, self.display_usdt_decimals)
         queue_s = _fmt_amount(queue_amount, self.usdt_decimals, self.display_usdt_decimals)
@@ -4166,26 +4425,112 @@ class BotState:
         node_naio_s = _fmt_amount(node_naio, self.naio_decimals, self.display_naio_decimals)
 
         query_day = int(last_poke_epoch) if int(last_poke_epoch) >= 0 else (int(current_epoch) - 1 if int(current_epoch) > 0 else 0)
+        lp_i = int(last_poke_epoch)
+        start_e = 0 if lp_i < 0 else lp_i + 1
+        ce = int(current_epoch)
+
         new_user_pool = 0
         new_user_total_power = 0
         new_user_user_power = 0
-        if query_day >= 0:
-            new_user_pool = _call_with_retry(
-                lambda: int(self.controller_contract.functions.newUserRewardNaioByDay(query_day).call()), default=0
-            )
-            new_user_total_power = _call_with_retry(
-                lambda: int(self.controller_contract.functions.newUserTotalPowerByDay(query_day).call()), default=0
-            )
-            new_user_user_power = _call_with_retry(
-                lambda: int(self.controller_contract.functions.newUserEligiblePower(query_day, a).call()), default=0
-            )
+        today_pool_est: Optional[int] = None
+        today_total_w = 0
+        today_user_w = 0
+        today_ok = False
+
+        with ThreadPoolExecutor(max_workers=48) as rxe:
+            f_sp = f_stp = f_su = None
+            if query_day >= 0:
+                f_sp = rxe.submit(lambda: int(self.controller_contract.functions.newUserRewardNaioByDay(query_day).call()))
+                f_stp = rxe.submit(lambda: int(self.controller_contract.functions.newUserTotalPowerByDay(query_day).call()))
+                f_su = rxe.submit(lambda: int(self.controller_contract.functions.newUserEligiblePower(query_day, a).call()))
+
+            f_bal = rxe.submit(lambda: int(self.naio_contract.functions.balanceOf(self.controller).call()))
+            f_res = rxe.submit(lambda: int(self.controller_contract.functions.reservedNaio().call()))
+
+            f_rw: dict[int, object] = {}
+            f_tp: dict[int, object] = {}
+            f_wb: dict[int, object] = {}
+            f_today_el = None
+            f_today_tot = None
+            f_pool_ce = None
+            if ce > 0:
+                f_today_el = rxe.submit(lambda: int(self.controller_contract.functions.newUserEligiblePower(ce, a).call()))
+                f_today_tot = rxe.submit(lambda: int(self.controller_contract.functions.newUserTotalPowerByDay(ce).call()))
+                if start_e <= ce:
+                    for i in range(0, ce + 1):
+                        ii = i
+                        f_rw[ii] = rxe.submit(
+                            lambda ii=ii: int(self.controller_contract.functions.newUserRewardNaioByDay(ii).call())
+                        )
+                    for i in range(0, ce):
+                        ii = i
+                        f_tp[ii] = rxe.submit(
+                            lambda ii=ii: int(self.controller_contract.functions.newUserTotalPowerByDay(ii).call())
+                        )
+                    for i in range(start_e, ce + 1):
+                        ii = i
+                        f_wb[ii] = rxe.submit(
+                            lambda ii=ii: int(self.controller_contract.functions.withdrawBurnUsedByEpoch(ii).call())
+                        )
+                else:
+                    f_pool_ce = rxe.submit(lambda: int(self.controller_contract.functions.newUserRewardNaioByDay(ce).call()))
+
+            if query_day >= 0 and f_sp is not None:
+                new_user_pool = _call_with_retry(f_sp.result, default=0)
+                new_user_total_power = _call_with_retry(f_stp.result, default=0)
+                new_user_user_power = _call_with_retry(f_su.result, default=0)
+            else:
+                new_user_pool = 0
+                new_user_total_power = 0
+                new_user_user_power = 0
+
+            bal_naio = _call_with_retry(f_bal.result, default=0)
+            res_naio = _call_with_retry(f_res.result, default=0)
+
+            if ce > 0 and f_today_el is not None and f_today_tot is not None:
+                today_user_w = _call_with_retry(f_today_el.result, default=0)
+                today_total_w = _call_with_retry(f_today_tot.result, default=0)
+
+            if ce > 0 and start_e <= ce and f_rw:
+                reward_by_day: dict[int, int] = {}
+                for i in range(0, ce + 1):
+                    reward_by_day[i] = _call_with_retry(f_rw[i].result, default=0)
+                total_power_by_day: dict[int, int] = {}
+                for i in range(0, ce):
+                    total_power_by_day[i] = _call_with_retry(f_tp[i].result, default=0)
+                withdraw_burn: dict[int, int] = {}
+                for i in range(start_e, ce + 1):
+                    withdraw_burn[i] = _call_with_retry(f_wb[i].result, default=0)
+
+                today_pool_est, today_ok = _simulate_reinvest_pool_after_settling_epochs(
+                    bal=bal_naio,
+                    reserved=res_naio,
+                    start_epoch=start_e,
+                    target_epoch=ce,
+                    reward_by_day=dict(reward_by_day),
+                    total_power_by_day=total_power_by_day,
+                    withdraw_burn_used_by_epoch=withdraw_burn,
+                )
+            elif ce > 0 and start_e > ce and f_pool_ce is not None:
+                today_pool_est = _call_with_retry(f_pool_ce.result, default=0)
+                today_ok = True
+
         new_user_estimated = 0
         if new_user_total_power > 0 and new_user_user_power > 0 and new_user_pool > 0:
             new_user_estimated = (new_user_pool * new_user_user_power) // new_user_total_power
         new_user_pool_s = _fmt_amount(new_user_pool, self.naio_decimals, self.display_naio_decimals)
         new_user_total_power_s = _fmt_amount(new_user_total_power, 18, 2)
         new_user_user_power_s = _fmt_amount(new_user_user_power, 18, 2)
-        new_user_estimated_s = _fmt_amount(new_user_estimated, self.naio_decimals, self.display_naio_decimals)
+        new_user_claimable_s = _fmt_amount(new_user_estimated, self.naio_decimals, self.display_naio_decimals)
+
+        today_pool_i = int(today_pool_est or 0)
+        today_est_wei = 0
+        if today_ok and today_total_w > 0 and today_user_w > 0 and today_pool_i > 0:
+            today_est_wei = (today_pool_i * today_user_w) // today_total_w
+        today_pool_s = _fmt_amount(today_pool_i, self.naio_decimals, self.display_naio_decimals)
+        today_total_power_s = _fmt_amount(today_total_w, 18, 2)
+        today_user_power_s = _fmt_amount(today_user_w, 18, 2)
+        today_est_s = _fmt_amount(today_est_wei, self.naio_decimals, self.display_naio_decimals)
 
         lines: list[str] = []
         lines.append(_t(lang, "info_title"))
@@ -4200,6 +4545,7 @@ class BotState:
         lines.append(_t(lang, "info_principal", amt=principal_s))
         lines.append(_t(lang, "info_total_claimed_earnings", amt=total_claimed_earnings_s))
         lines.append(_t(lang, "info_power", amt=power_s))
+        lines.append(_t(lang, "info_power_share", pct=power_share_s))
         if referrer_addr:
             lines.append(_t(lang, "info_referrer", addr=_as_code(referrer_addr)))
         else:
@@ -4258,7 +4604,13 @@ class BotState:
         lines.append(_t(lang, "info_new_user_pool", amt=new_user_pool_s))
         lines.append(_t(lang, "info_new_user_total_power", amt=new_user_total_power_s))
         lines.append(_t(lang, "info_new_user_user_power", amt=new_user_user_power_s))
-        lines.append(_t(lang, "info_new_user_estimated", amt=new_user_estimated_s))
+        lines.append(_t(lang, "info_new_user_claimable", amt=new_user_claimable_s))
+        if ce > 0:
+            lines.append(_t(lang, "info_new_user_today_header", day=ce))
+            lines.append(_t(lang, "info_new_user_pool", amt=today_pool_s))
+            lines.append(_t(lang, "info_new_user_total_power", amt=today_total_power_s))
+            lines.append(_t(lang, "info_new_user_user_power", amt=today_user_power_s))
+            lines.append(_t(lang, "info_new_user_estimated", amt=today_est_s))
         lines.append("")
 
         lines.append(_t(lang, "info_earnings"))
@@ -4998,6 +5350,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         + _t(lang, "help_price_pic3") + "\n"
         + _t(lang, "help_info_query") + "\n"
         + _t(lang, "help_list_miss") + "\n"
+        + _t(lang, "help_address_map") + "\n"
         + _t(lang, "help_menu")
     )
 
@@ -5164,6 +5517,184 @@ async def price_pic3_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_photo(photo=png, reply_markup=_menu_kb(lang))
     except Exception as e:
         await _reply_text_with_mention(update, _t(lang, "price_pic_failed", err=e), reply_markup=_menu_kb(lang))
+
+
+def _wei_to_usdt_csv_plain(wei: int, usdt_decimals: int) -> str:
+    d = Decimal(int(wei)) / (Decimal(10) ** Decimal(usdt_decimals))
+    s = format(d, "f")
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
+    return s if s else "0"
+
+
+def _address_map_csv_bytes(data: dict, usdt_decimals: int) -> bytes:
+    """One CSV (UTF-8 BOM): two blocks — by generation, then addresses. Plain CSV has no sheets."""
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["### table1_by_generation"])
+    w.writerow(
+        [
+            "generation",
+            "count",
+            "layer_total_wei",
+            "cumulative_wei",
+            "layer_total_usdt",
+            "cumulative_usdt",
+        ]
+    )
+    for row in data.get("table1") or []:
+        lt = int(row.get("layer_total_wei", 0))
+        cw = int(row.get("cumulative_wei", 0))
+        w.writerow(
+            [
+                int(row.get("generation", 0)),
+                int(row.get("count", 0)),
+                str(lt),
+                str(cw),
+                _wei_to_usdt_csv_plain(lt, usdt_decimals),
+                _wei_to_usdt_csv_plain(cw, usdt_decimals),
+            ]
+        )
+    w.writerow([])
+    w.writerow(["### table2_addresses"])
+    w.writerow(["address", "generation", "user_total_wei", "user_total_usdt"])
+    for row in data.get("table2") or []:
+        ut = int(row.get("user_total_wei", 0))
+        w.writerow(
+            [
+                str(row.get("address") or ""),
+                int(row.get("generation", 0)),
+                str(ut),
+                _wei_to_usdt_csv_plain(ut, usdt_decimals),
+            ]
+        )
+    return ("\ufeff" + buf.getvalue()).encode("utf-8")
+
+
+def _format_address_map_report(lang: str, data: dict, usdt_decimals: int, display_usdt: int) -> str:
+    if not data.get("ok"):
+        err = data.get("error")
+        key = "address_map_err_db_not_found" if err == "db_not_found" else "address_map_err_no_tables"
+        return _t(lang, key)
+
+    root = str(data.get("root") or "")
+    try:
+        root_cs = Web3.to_checksum_address(root)
+    except Exception:
+        root_cs = root
+    count = int(data.get("downline_count", 0))
+    lines: List[str] = []
+    lines.append(_t(lang, "address_map_root", addr=root_cs, count=count))
+    if data.get("empty") or count == 0:
+        lines.append("")
+        lines.append(_t(lang, "address_map_empty"))
+        lines.append("")
+        lines.append(_t(lang, "address_map_note"))
+        return "\n".join(lines)
+
+    lines.append("")
+    lines.append(_t(lang, "address_map_table1_title"))
+    lines.append(_t(lang, "address_map_table1_head"))
+    for row in data.get("table1") or []:
+        g = int(row.get("generation", 0))
+        c = int(row.get("count", 0))
+        lt = _fmt_amount(int(row.get("layer_total_wei", 0)), usdt_decimals, display_usdt)
+        cw = _fmt_amount(int(row.get("cumulative_wei", 0)), usdt_decimals, display_usdt)
+        lines.append(f"{g} | {c} | {lt} | {cw}")
+
+    lines.append("")
+    lines.append(_t(lang, "address_map_table2_title"))
+    lines.append(_t(lang, "address_map_table2_head"))
+    for row in data.get("table2") or []:
+        addr = str(row.get("address") or "")
+        try:
+            a = Web3.to_checksum_address(addr)
+        except Exception:
+            a = addr
+        g = int(row.get("generation", 0))
+        ut = _fmt_amount(int(row.get("user_total_wei", 0)), usdt_decimals, display_usdt)
+        lines.append(f"{a} | {g} | {ut}")
+
+    lines.append("")
+    lines.append(_t(lang, "address_map_note"))
+    return "\n".join(lines)
+
+
+async def address_map_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    assert update.message
+    s = STATE
+    if s is None:
+        await _reply_text_with_mention(update, _t(DEFAULT_LANG, "bot_init_failed"))
+        return
+    if update.effective_chat:
+        s.register_chat(update.effective_chat)
+    lang = s.get_lang(update.effective_chat.id) if update.effective_chat else DEFAULT_LANG
+
+    if update.effective_chat and update.effective_chat.type in ("group", "supergroup"):
+        if not await _is_group_admin(update, context):
+            await _reply_text_with_mention(update, _t(lang, "hash_admin_only"), reply_markup=_menu_kb(lang))
+            return
+
+    if query_address_referral_map is None:
+        await _reply_text_with_mention(update, _t(lang, "address_map_unavailable"), reply_markup=_menu_kb(lang))
+        return
+
+    arg = (context.args[0] if context.args else "").strip()
+    txt = (update.message.text or "").strip()
+    addr_raw = arg or _extract_first_address(txt)
+    if not addr_raw:
+        await _reply_text_with_mention(update, _t(lang, "address_map_usage"), reply_markup=_menu_kb(lang))
+        return
+    try:
+        addr = Web3.to_checksum_address(addr_raw)
+    except Exception:
+        await _reply_text_with_mention(update, _t(lang, "invalid_address"), reply_markup=_menu_kb(lang))
+        return
+
+    def _run():
+        return query_address_referral_map(s.price_db_path, addr)
+
+    try:
+        data = await asyncio.to_thread(_run)
+    except Exception as e:
+        await _reply_text_with_mention(update, _t(lang, "query_failed", err=e), reply_markup=_menu_kb(lang))
+        return
+
+    body = _format_address_map_report(lang, data, s.usdt_decimals, s.display_usdt_decimals)
+    if not data.get("ok"):
+        await _reply_text_with_mention(update, body, reply_markup=_menu_kb(lang))
+        return
+    if data.get("empty") or int(data.get("downline_count", 0)) == 0:
+        await _reply_text_with_mention(update, body, reply_markup=_menu_kb(lang))
+        return
+
+    try:
+        csv_bytes = _address_map_csv_bytes(data, s.usdt_decimals)
+    except Exception as e:
+        logger.warning("address_map csv failed: %s", e)
+        await _reply_text_with_mention(update, _t(lang, "query_failed", err=e), reply_markup=_menu_kb(lang))
+        return
+
+    try:
+        root_cs = Web3.to_checksum_address(str(data.get("root") or ""))
+    except Exception:
+        root_cs = str(data.get("root") or "")
+    safe = (str(data.get("root") or "").replace("0x", "")[:8]) or "export"
+    fname = f"address_map_{safe}_{int(time.time())}.csv"
+    doc = InputFile(io.BytesIO(csv_bytes), filename=fname)
+    cap = _t(
+        lang,
+        "address_map_caption_csv",
+        addr=root_cs,
+        count=int(data.get("downline_count", 0)),
+    )
+    try:
+        await update.message.reply_document(document=doc, caption=cap, reply_markup=_menu_kb(lang))
+        await update.message.reply_text(_t(lang, "address_map_sent_file"), reply_markup=_menu_kb(lang))
+    except Exception as e:
+        logger.warning("address_map send document failed: %s", e)
+        await _reply_text_with_mention(update, _t(lang, "query_failed", err=e), reply_markup=_menu_kb(lang))
+
 
 async def list_miss_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     assert update.message
@@ -5621,6 +6152,7 @@ def main() -> None:
     app.add_handler(CommandHandler("unsubscribe", unsubscribe_cmd))
     app.add_handler(CommandHandler("hash", hash_cmd))
     app.add_handler(CommandHandler("list_miss", list_miss_cmd))
+    app.add_handler(CommandHandler("address_map", address_map_cmd))
     app.add_handler(CommandHandler("nodes", nodes_cmd))
     app.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/price_pic3"), price_pic3_cmd))
     app.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^/price_pic2_"), price_pic2_cmd))

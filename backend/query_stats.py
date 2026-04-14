@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import argparse
 import os
 import sqlite3
 import time
+from collections import defaultdict, deque
 from datetime import datetime, timedelta
-from typing import List, Dict
+from typing import Any, Dict, List
+
 from dotenv import load_dotenv
 from web3 import Web3
 
@@ -122,7 +126,7 @@ def _get_all_downlines(conn: sqlite3.Connection, user_address: str) -> List[str]
 
         if has_referral_relations:
             cursor = conn.execute(
-                "SELECT user_address FROM referral_relations WHERE referrer_address = ?",
+                "SELECT user_address FROM referral_relations WHERE LOWER(referrer_address) = ?",
                 (current,),
             )
             for row in cursor:
@@ -131,7 +135,7 @@ def _get_all_downlines(conn: sqlite3.Connection, user_address: str) -> List[str]
 
         if has_deposit_records:
             cursor = conn.execute(
-                "SELECT DISTINCT user_address FROM deposit_records WHERE referrer_address = ?",
+                "SELECT DISTINCT user_address FROM deposit_records WHERE LOWER(referrer_address) = ?",
                 (current,),
             )
             for row in cursor:
@@ -144,6 +148,145 @@ def _get_all_downlines(conn: sqlite3.Connection, user_address: str) -> List[str]
                 queue.append(downline)
 
     return downlines
+
+
+def _direct_children_for_map(
+    conn: sqlite3.Connection, current: str, has_rr: bool, has_dr: bool
+) -> List[str]:
+    direct: set[str] = set()
+    if has_rr:
+        cursor = conn.execute(
+            "SELECT user_address FROM referral_relations WHERE LOWER(referrer_address) = ?",
+            (current,),
+        )
+        for row in cursor:
+            if row and row[0]:
+                direct.add(str(row[0]).lower())
+    if has_dr:
+        cursor = conn.execute(
+            "SELECT DISTINCT user_address FROM deposit_records WHERE LOWER(referrer_address) = ?",
+            (current,),
+        )
+        for row in cursor:
+            if row and row[0]:
+                direct.add(str(row[0]).lower())
+    return list(direct)
+
+
+def query_address_referral_map(db_path: str, root_address: str) -> Dict[str, Any]:
+    """
+    BFS over the same edges as team stats: referral_relations and deposit_records.referrer.
+    Labels each downline with generation depth; deposit totals are sum of amount_wei per user_address.
+    """
+    root = str(root_address or "").strip().lower()
+    if not root.startswith("0x"):
+        root = "0x" + root
+
+    if not os.path.isfile(db_path):
+        return {"ok": False, "error": "db_not_found", "root": root}
+
+    conn = sqlite3.connect(db_path, timeout=30)
+    try:
+        has_dr = (
+            conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='deposit_records' LIMIT 1"
+            ).fetchone()
+            is not None
+        )
+        has_rr = (
+            conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='referral_relations' LIMIT 1"
+            ).fetchone()
+            is not None
+        )
+        if not has_dr and not has_rr:
+            return {"ok": False, "error": "no_tables", "root": root}
+
+        q: deque[tuple[str, int]] = deque([(root, 0)])
+        addr_gen: Dict[str, int] = {}
+        while q:
+            current, depth = q.popleft()
+            for ch in _direct_children_for_map(conn, current, has_rr, has_dr):
+                if ch == root:
+                    continue
+                if ch in addr_gen:
+                    continue
+                addr_gen[ch] = depth + 1
+                q.append((ch, depth + 1))
+
+        if not addr_gen:
+            return {
+                "ok": True,
+                "root": root,
+                "downline_count": 0,
+                "table1": [],
+                "table2": [],
+                "empty": True,
+            }
+
+        addrs = list(addr_gen.keys())
+        totals: Dict[str, int] = defaultdict(int)
+        if has_dr and addrs:
+            placeholders = ",".join(["?"] * len(addrs))
+            cur = conn.execute(
+                f"SELECT user_address, amount_wei FROM deposit_records WHERE user_address IN ({placeholders})",
+                addrs,
+            )
+            for row in cur:
+                u = str(row[0]).lower() if row[0] else ""
+                if not u:
+                    continue
+                try:
+                    totals[u] += int(row[1]) if row[1] not in (None, "") else 0
+                except (ValueError, TypeError):
+                    continue
+
+        by_gen: Dict[int, Dict[str, int]] = {}
+        for addr, g in addr_gen.items():
+            if g not in by_gen:
+                by_gen[g] = {"count": 0, "layer_total_wei": 0}
+            by_gen[g]["count"] += 1
+            by_gen[g]["layer_total_wei"] += int(totals.get(addr, 0))
+
+        max_g = max(by_gen.keys())
+        table1: List[Dict[str, Any]] = []
+        cum = 0
+        for g in range(1, max_g + 1):
+            if g not in by_gen:
+                continue
+            row = by_gen[g]
+            lt = int(row["layer_total_wei"])
+            cum += lt
+            table1.append(
+                {
+                    "generation": g,
+                    "count": int(row["count"]),
+                    "layer_total_wei": lt,
+                    "cumulative_wei": cum,
+                }
+            )
+
+        table2: List[Dict[str, Any]] = []
+        for addr in sorted(addr_gen.keys(), key=lambda x: (addr_gen[x], x)):
+            table2.append(
+                {
+                    "address": addr,
+                    "generation": addr_gen[addr],
+                    "user_total_wei": int(totals.get(addr, 0)),
+                }
+            )
+
+        return {
+            "ok": True,
+            "root": root,
+            "downline_count": len(addr_gen),
+            "table1": table1,
+            "table2": table2,
+            "empty": False,
+        }
+    finally:
+        conn.close()
+
 
 def query_downline_deposits(db_path: str, user_address: str, period: str = "all", system_start_ts: int = 0) -> Dict:
     user_address = user_address.lower()
